@@ -57,8 +57,6 @@ class GMMMoE:
             # compute P(Y | X, theta_j)
             Y_pred = np.dot(X, self.phis[e, :, :])
             p_y_x = self.gaussian_pdf(Y_pred, Y, np.identity(self.K)).reshape(self.N, 1)
-            # prob = np.exp(-0.5 * (Y - Y_pred)**2) / np.sqrt(2 * math.pi)
-            # p_y_x = np.mean(prob, axis=1, keepdims=True)
 
             assert p_x_v.shape == p_y_x.shape
 
