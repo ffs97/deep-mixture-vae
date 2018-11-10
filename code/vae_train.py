@@ -1,5 +1,5 @@
 import os
-import moe
+import models
 import numpy as np
 import tensorflow as tf
 import matplotlib as mpl
@@ -20,16 +20,10 @@ dataset = "binary"
 
 config = Config(datagroup)
 
-train_data, test_data = load_data(datagroup, dataset=dataset, output_dim=2)
+train_data, test_data = load_data(datagroup, dataset=dataset)
 
 train_data = Dataset(train_data, batch_size=config.batch_size)
 test_data = Dataset(test_data, batch_size=config.batch_size)
-
-
-folders = ["models", "plots"]
-for folder in folders:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
 
 
 def regeneration_plot():
@@ -46,14 +40,14 @@ def regeneration_plot():
 
         return images
 
-    eps = moem.vae.sample_reparametrization_variables(100, feed=True)
+    eps = vae.sample_reparametrization_variables(100, feed=True)
 
     orig_X = test_data.data[:100]
     recn_X = sess.run(
-        moem.vae.reconstructed_X, feed_dict={
-            moem.vae.X: orig_X,
-            moem.vae.epsilon: eps["Z"],
-            moem.vae.cluster: eps["C"]
+        vae.reconstructed_X, feed_dict={
+            vae.X: orig_X,
+            vae.epsilon: eps["Z"],
+            vae.cluster: eps["C"]
         }
     )
 
@@ -85,9 +79,8 @@ def sample_plot():
                     "c": i
                 }
             }
-            eps = moem.vae.sample_generative_feed(1, **kwargs)
-            out = sess.run(moem.vae.reconstructed_X,
-                           feed_dict={moem.vae.Z: eps["Z"]})
+            eps = vae.sample_generative_feed(1, **kwargs)
+            out = sess.run(vae.reconstructed_X, feed_dict={vae.Z: eps["Z"]})
 
             figure[i * 28: (i + 1) * 28, j * 28: (j + 1) *
                    28] = out.reshape((28, 28)) * 255
@@ -106,38 +99,21 @@ def sample_plot():
     plt.close()
 
 
-# moem = moe.VMOE("vmoe", 784, 10, 2, 10, activation=tf.nn.relu,
-#                 initializer=tf.contrib.layers.xavier_initializer)
-# moem.build_graph({"Z": [512, 256], "C": [512, 256]}, [256, 512])
-
-moem = moe.GMMOE("gmmoe", 784, 2, 10, activation=tf.nn.relu,
-                 initializer=tf.contrib.layers.xavier_initializer)
-moem.build_graph([512, 256])
-
-moem.define_train_step(0.002, train_data.epoch_len * 10)
+vae = models.MixtureVAE("mixture_vae", 784, 5, 10, activation=tf.nn.relu,
+                        initializer=tf.contrib.layers.xavier_initializer)
+vae.build_graph({"Z": [512, 256], "C": [512, 256]}, [256, 512])
+vae.define_train_step(0.002, train_data.epoch_len * 10)
 
 sess = tf.Session()
 tf.global_variables_initializer().run(session=sess)
 
-saver = tf.train.Saver()
-# saver.restore(sess, "models/%s.ckpt" % moem.name)
-
-with tqdm(range(1000), postfix={"loss": "inf", "lsqe": "inf"}) as bar:
+with tqdm(range(100), postfix={"loss": "inf"}) as bar:
     for epoch in bar:
-        if moem.name == "vmoe" and epoch % 10 == 0:
+        if epoch % 10 == 0:
             sample_plot()
             regeneration_plot()
 
-        if epoch % 100 == 0:
-            save_path = saver.save(sess, "models/%s.ckpt" % moem.name)
+        bar.set_postfix({"loss": "%.4f" % vae.train_op(sess, train_data)})
 
-        bar.set_postfix({
-            "loss": "%.4f" % moem.train_op(sess, train_data),
-            "lsqe": "%.4f" % moem.square_error(sess, test_data)
-        })
-
-save_path = saver.save(sess, "/models/%s.ckpt" % moem.name)
-
-if moem.name == "vmoe":
-    sample_plot()
-    regeneration_plot()
+sample_plot()
+regeneration_plot()

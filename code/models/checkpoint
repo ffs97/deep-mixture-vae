@@ -1,0 +1,2 @@
+model_checkpoint_path: "gmmoe.ckpt"
+all_model_checkpoint_paths: "gmmoe.ckpt"

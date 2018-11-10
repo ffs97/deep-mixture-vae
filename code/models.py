@@ -202,7 +202,7 @@ class MixtureVAE(VAE):
                 tf.float32, shape=(None, 1, self.n_classes), name="epsilon_C"
             )
             self.temperature = tf.placeholder_with_default(
-                1.0, shape=None, name="temperature"
+                0.2, shape=None, name="temperature"
             )
 
             self.latent_variables = dict()
@@ -228,9 +228,6 @@ class MixtureVAE(VAE):
             })
             lv, eps, params = self.latent_variables["C"]
             self.C = lv.inverse_reparametrize(eps, params)
-
-            self.means = list()
-            self.log_vars = list()
 
             self.z_encoder_network = FeedForwardNetwork(
                 name="z/encoder_network"
