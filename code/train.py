@@ -15,16 +15,6 @@ mpl.rc_file_defaults()
 
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-datagroup = "mnist"
-dataset = "binary"
-
-config = Config(datagroup)
-
-train_data, test_data = load_data(datagroup, dataset=dataset, output_dim=2)
-
-train_data = Dataset(train_data, batch_size=config.batch_size)
-test_data = Dataset(test_data, batch_size=config.batch_size)
-
 
 folders = ["models", "plots"]
 for folder in folders:
@@ -106,38 +96,44 @@ def sample_plot():
     plt.close()
 
 
-# moem = moe.VMOE("vmoe", 784, 10, 2, 10, activation=tf.nn.relu,
-#                 initializer=tf.contrib.layers.xavier_initializer)
-# moem.build_graph({"Z": [512, 256], "C": [512, 256]}, [256, 512])
+datagroup = "mnist"
+dataset = "binary"
 
-moem = moe.GMMOE("gmmoe", 784, 2, 10, activation=tf.nn.relu,
-                 initializer=tf.contrib.layers.xavier_initializer)
-moem.build_graph([512, 256])
+train_data, test_data = load_data(datagroup, dataset=dataset, output_dim=2)
+
+train_data = Dataset(train_data, batch_size=200)
+test_data = Dataset(test_data, batch_size=200)
+
+model = "dmoe"
+
+if model == "vmoe":
+    moem = moe.VMoE("vmoe", 784, 10, 2, 10, activation=tf.nn.relu,
+                    initializer=tf.contrib.layers.xavier_initializer)
+    moem.build_graph({"Z": [512, 256], "C": [512, 256]}, [256, 512])
+
+elif model == "dmoe":
+    moem = moe.DMoE("gmmoe", 784, 2, 10, activation=tf.nn.relu,
+                    initializer=tf.contrib.layers.xavier_initializer)
+    moem.build_graph([512, 256])
 
 moem.define_train_step(0.002, train_data.epoch_len * 10)
 
 sess = tf.Session()
 tf.global_variables_initializer().run(session=sess)
 
-saver = tf.train.Saver()
-# saver.restore(sess, "models/%s.ckpt" % moem.name)
-
 with tqdm(range(1000), postfix={"loss": "inf", "lsqe": "inf"}) as bar:
     for epoch in bar:
-        if moem.name == "vmoe" and epoch % 10 == 0:
+        if model == "vmoe" and epoch % 10 == 0:
             sample_plot()
             regeneration_plot()
-
-        if epoch % 100 == 0:
-            save_path = saver.save(sess, "models/%s.ckpt" % moem.name)
 
         bar.set_postfix({
             "loss": "%.4f" % moem.train_op(sess, train_data),
             "lsqe": "%.4f" % moem.square_error(sess, test_data)
         })
 
-save_path = saver.save(sess, "/models/%s.ckpt" % moem.name)
-
-if moem.name == "vmoe":
+if model == "vmoe":
     sample_plot()
     regeneration_plot()
+
+print moem.square_error(sess, test_data)

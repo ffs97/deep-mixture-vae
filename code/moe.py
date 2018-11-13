@@ -1,13 +1,15 @@
+import numpy as np
 import tensorflow as tf
 
 from models import MixtureVAE
-import tensorflow as tf
 
 from models import MixtureVAE
 from network import FeedForwardNetwork
 
+from sklearn.mixture import GaussianMixture
 
-class GMMOE:
+
+class DMoE:
     def __init__(self, name, input_dim, output_dim, n_classes, activation=None, initializer=None):
         self.name = name
 
@@ -20,46 +22,49 @@ class GMMOE:
         self.initializer = initializer
 
     def build_graph(self, network_layer_sizes):
-        self.X = tf.placeholder(
-            tf.float32, shape=(None, self.input_dim), name="X"
-        )
-        self.Y = tf.placeholder(
-            tf.float32, shape=(None, self.output_dim), name="Y"
-        )
-
-        self.logits_network = FeedForwardNetwork(
-            name="logits_network"
-        )
-        self.logits = self.logits_network.build(
-            [("logits", self.n_classes)],
-            network_layer_sizes, self.X
-        )
-
-        self.regression_biases = tf.get_variable(
-            "regression_biases", dtype=tf.float32,
-            initializer=tf.initializers.zeros,
-            shape=(self.output_dim, self.n_classes)
-        )
-        self.regression_weights = tf.get_variable(
-            "regression_weights", dtype=tf.float32,
-            initializer=tf.initializers.random_normal,
-            shape=(self.n_classes, self.output_dim, self.input_dim)
-        )
-
-        self.cluster_probs = tf.nn.softmax(self.logits, axis=-1)
-
-        self.reconstructed_Y_k = tf.transpose(tf.matmul(
-            self.regression_weights,
-            tf.tile(
-                tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
+        with tf.variable_scope(self.name) as _:
+            self.X = tf.placeholder(
+                tf.float32, shape=(None, self.input_dim), name="X"
             )
-        )) + self.regression_biases
+            self.Y = tf.placeholder(
+                tf.float32, shape=(None, self.output_dim), name="Y"
+            )
 
-        self.reconstructed_Y = tf.reduce_sum(
-            self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
-        )
+            self.logits_network = FeedForwardNetwork(
+                name="logits_network"
+            )
+            self.logits = self.logits_network.build(
+                [("logits", self.n_classes)],
+                network_layer_sizes, self.X
+            )
 
-        self.error = tf.reduce_mean(tf.square(self.reconstructed_Y - self.Y))
+            self.regression_biases = tf.get_variable(
+                "regression_biases", dtype=tf.float32,
+                initializer=tf.initializers.zeros,
+                shape=(self.output_dim, self.n_classes)
+            )
+            self.regression_weights = tf.get_variable(
+                "regression_weights", dtype=tf.float32,
+                initializer=tf.initializers.random_normal,
+                shape=(self.n_classes, self.output_dim, self.input_dim)
+            )
+
+            self.cluster_probs = tf.nn.softmax(self.logits, axis=-1)
+
+            self.reconstructed_Y_k = tf.transpose(tf.matmul(
+                self.regression_weights,
+                tf.tile(
+                    tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
+                )
+            )) + self.regression_biases
+
+            self.reconstructed_Y = tf.reduce_sum(
+                self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
+            )
+
+            self.error = tf.reduce_mean(
+                tf.square(self.reconstructed_Y - self.Y)
+            )
 
     def square_error(self, session, data):
         return session.run(self.error, feed_dict={
@@ -106,7 +111,7 @@ class GMMOE:
         return loss
 
 
-class VMOE:
+class VMoE:
     def __init__(self, name, input_dim, latent_dim, output_dim, n_classes, activation=None, initializer=None):
         self.name = name
 
@@ -120,44 +125,47 @@ class VMOE:
         self.initializer = initializer
 
     def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
-        self.vae = MixtureVAE(
-            "mixture_vae", self.input_dim, self.latent_dim, self.n_classes,
-            activation=self.activation, initializer=self.initializer
-        )
-        self.vae.build_graph(encoder_layer_sizes, decoder_layer_sizes)
-
-        self.X = self.vae.X
-        self.Y = tf.placeholder(
-            tf.float32, shape=(None, self.output_dim), name="Y"
-        )
-
-        self.logits = self.vae.logits
-
-        self.regression_biases = tf.get_variable(
-            "regression_biases", dtype=tf.float32,
-            initializer=tf.initializers.zeros,
-            shape=(self.output_dim, self.n_classes)
-        )
-        self.regression_weights = tf.get_variable(
-            "regression_weights", dtype=tf.float32,
-            initializer=tf.initializers.random_normal,
-            shape=(self.n_classes, self.output_dim, self.input_dim)
-        )
-
-        self.cluster_probs = tf.nn.softmax(self.logits, axis=-1)
-
-        self.reconstructed_Y_k = tf.transpose(tf.matmul(
-            self.regression_weights,
-            tf.tile(
-                tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
+        with tf.variable_scope(self.name) as _:
+            self.vae = MixtureVAE(
+                "mixture_vae", self.input_dim, self.latent_dim, self.n_classes,
+                activation=self.activation, initializer=self.initializer
             )
-        )) + self.regression_biases
+            self.vae.build_graph(encoder_layer_sizes, decoder_layer_sizes)
 
-        self.reconstructed_Y = tf.reduce_sum(
-            self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
-        )
+            self.X = self.vae.X
+            self.Y = tf.placeholder(
+                tf.float32, shape=(None, self.output_dim), name="Y"
+            )
 
-        self.error = tf.reduce_mean(tf.square(self.reconstructed_Y - self.Y))
+            self.logits = self.vae.logits
+
+            self.regression_biases = tf.get_variable(
+                "regression_biases", dtype=tf.float32,
+                initializer=tf.initializers.zeros,
+                shape=(self.output_dim, self.n_classes)
+            )
+            self.regression_weights = tf.get_variable(
+                "regression_weights", dtype=tf.float32,
+                initializer=tf.initializers.random_normal,
+                shape=(self.n_classes, self.output_dim, self.input_dim)
+            )
+
+            self.cluster_probs = tf.nn.softmax(self.logits, axis=-1)
+
+            self.reconstructed_Y_k = tf.transpose(tf.matmul(
+                self.regression_weights,
+                tf.tile(
+                    tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
+                )
+            )) + self.regression_biases
+
+            self.reconstructed_Y = tf.reduce_sum(
+                self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
+            )
+
+            self.error = tf.reduce_mean(
+                tf.square(self.reconstructed_Y - self.Y)
+            )
 
     def square_error(self, session, data):
         return session.run(self.error, feed_dict={
