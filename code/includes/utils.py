@@ -1,7 +1,6 @@
 import math
 import numpy as np
 import pickle as pkl
-import networkx as nx
 import scipy.sparse as sp
 
 
@@ -39,18 +38,18 @@ def generate_regression_variable(data, output_dim, n_classes):
 
 
 def load_data(datagroup, **args):
-    def spiral(dataset="spiral", N_tr=5000, N_ts=1000, D=2, K=5):
+    def spiral(N_tr=5000, N_ts=1000, D=2, K=5):
         train_data = np.zeros((N_tr * K, D))
         test_data = np.zeros((N_ts * K, D))
 
-        for j in xrange(K):
+        for j in range(K):
             ix = range(N_tr * j, N_tr * (j + 1))
             r = np.linspace(2.5, 10.0, N_tr)
             t = np.linspace(j * 1.25, (j + 1) * 1.25, N_tr) + \
                 np.random.randn(N_tr) * 0.05
             train_data[ix] = np.c_[r * np.sin(t), r * np.cos(t)]
 
-        for j in xrange(K):
+        for j in range(K):
             ix = range(N_ts * j, N_ts * (j + 1))
             r = np.linspace(2.5, 10.0, N_ts)
             t = np.linspace(j * 1.25, (j + 1) * 1.25, N_ts) + \
@@ -60,23 +59,15 @@ def load_data(datagroup, **args):
         test_classes = np.arange(K).repeat(N_ts)
         train_classes = np.arange(K).repeat(N_tr)
 
-        train_data, test_data = generate_regression_variable(
-            (train_data, train_classes, test_data, test_classes), output_dim, 10
-        )
+        return (train_data, train_classes), (test_data, test_classes)
 
-        return train_data, test_data
-
-    def mnist(dataset="binary", output_dim=1, dir="data/mnist"):
+    def mnist(dir="data/mnist"):
         from tensorflow.examples.tutorials.mnist import input_data
 
         mnist = input_data.read_data_sets("data/mnist/", one_hot=False)
 
         test_data = mnist.test.images, mnist.test.labels
         train_data = mnist.train.images, mnist.train.labels
-
-        train_data, test_data = generate_regression_variable(
-            (train_data, test_data), output_dim, 10
-        )
 
         return train_data, test_data
 
@@ -88,7 +79,7 @@ def load_data(datagroup, **args):
         assert(False)
 
 
-class Dataset:
+class MEDataset:
     def __init__(self, data, batch_size=100, shuffle=True):
         self.data = data["data"]
         self.labels = data["labels"]
@@ -133,6 +124,35 @@ class Dataset:
 
         if count > 0:
             yield np.array(data_batch), np.array(labels_batch), np.array(classes_batch)
+
+    def __len__(self):
+        return self.epoch_len
+
+
+class Dataset:
+    def __init__(self, data, batch_size=100, shuffle=True):
+        self.data = np.copy(data)
+        self.batch_size = batch_size
+
+        self.data_dim = self.data.shape[1]
+
+        self.epoch_len = int(math.ceil(len(data) / batch_size))
+
+        if shuffle:
+            np.random.shuffle(self.data)
+
+    def get_batches(self, shuffle=True):
+        if shuffle:
+            np.random.shuffle(self.data)
+
+        batch = []
+        for row in self.data:
+            batch.append(row)
+            if len(batch) == self.batch_size:
+                yield np.array(batch)
+                batch = []
+        if len(batch) > 0:
+            yield np.array(batch)
 
     def __len__(self):
         return self.epoch_len

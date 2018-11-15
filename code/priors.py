@@ -1,5 +1,3 @@
-import qupa
-import qupa.pcd as pcd
 import numpy as np
 import tensorflow as tf
 
@@ -58,7 +56,12 @@ class NormalMixtureFactorial(LatentVariable):
 
         with tf.variable_scope(self.name) as _:
             self.means = tf.get_variable(
-                "means", shape=(self.n_classes, self.dim), dtype=tf.float32
+                "means", shape=(self.n_classes, self.dim), dtype=tf.float32,
+                initializer=tf.initializers.random_normal
+            )
+            self.log_vars = tf.get_variable(
+                "log_vars", shape=(self.n_classes, self.dim), dtype=tf.float32,
+                initializer=tf.initializers.zeros
             )
 
     def sample_reparametrization_variable(self, n):
@@ -75,7 +78,8 @@ class NormalMixtureFactorial(LatentVariable):
         else:
             c = kwargs["c"]
 
-        samples = sess.run(self.means)[c, :] + samples
+        means, log_vars = sess.run([self.means, self.log_vars])
+        samples = means[c, :] + samples * np.exp(log_vars[c, :] / 2.0)
 
         return samples
 
@@ -98,8 +102,14 @@ class NormalMixtureFactorial(LatentVariable):
         weights = tf.reshape(weights, (-1, self.n_classes))
 
         prior_mean = tf.matmul(weights, self.means)
+        prior_log_var = tf.matmul(weights, self.log_vars)
 
-        res = tf.exp(log_var) - log_var + tf.square(mean - prior_mean) - 1
+        res = (
+            prior_log_var - log_var +
+            (
+                tf.exp(log_var) + tf.square(mean - prior_mean)
+            ) / tf.exp(prior_log_var) - 1
+        )
         res = tf.reduce_mean(0.5 * tf.reduce_sum(res, axis=1))
 
         return res

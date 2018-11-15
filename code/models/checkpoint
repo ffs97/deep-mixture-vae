@@ -1,2 +1,2 @@
-model_checkpoint_path: "vmoe.ckpt"
-all_model_checkpoint_paths: "vmoe.ckpt"
+model_checkpoint_path: "vade.ckpt"
+all_model_checkpoint_paths: "vade.ckpt"
