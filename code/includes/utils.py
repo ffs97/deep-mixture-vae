@@ -26,6 +26,7 @@ def generate_regression_variable(data, output_dim, n_classes):
 
     train_labels = np.swapaxes(np.matmul(train_data, weights), 0, 1) + biases
     train_labels = train_labels[range(len(train_data)), :, train_classes]
+    # train_labels += np.random.standard_normal(train_labels.shape) * 0.01
 
     test_labels = np.swapaxes(np.matmul(test_data, weights), 0, 1) + biases
     test_labels = test_labels[range(len(test_data)), :, test_classes]
@@ -85,6 +86,8 @@ class MEDataset:
         self.labels = data["labels"]
         self.classes = data["classes"]
 
+        self.shuffle = shuffle
+
         self.len = len(self.data)
 
         assert(len(self.labels) == self.len and len(self.classes) == self.len)
@@ -93,8 +96,8 @@ class MEDataset:
 
         self.epoch_len = int(math.ceil(len(self.data) / batch_size))
 
-    def get_batches(self, shuffle=True):
-        if shuffle:
+    def get_batches(self):
+        if self.shuffle:
             indices = np.random.permutation(len(self.data))
 
             self.data = self.data[indices]
@@ -134,6 +137,8 @@ class Dataset:
         self.data = np.copy(data)
         self.batch_size = batch_size
 
+        self.shuffle = shuffle
+
         self.data_dim = self.data.shape[1]
 
         self.epoch_len = int(math.ceil(len(data) / batch_size))
@@ -141,8 +146,8 @@ class Dataset:
         if shuffle:
             np.random.shuffle(self.data)
 
-    def get_batches(self, shuffle=True):
-        if shuffle:
+    def get_batches(self):
+        if self.shuffle:
             np.random.shuffle(self.data)
 
         batch = []

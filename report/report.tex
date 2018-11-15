@@ -4,7 +4,7 @@
 \setpapertitle{Mixture of Experts using Discrete VAE}
 
 \addauthor{Abhisek Panda}{150026}
-\addauthor{Aakarsh Gajbhiye}{150000}
+\addauthor{Aakarsh Gajbhiye}{150067}
 
 \begin{document}
 \makeheader
@@ -69,10 +69,10 @@
 		\end{align*}
 		for some non-linear mapping $f: \bR \ra \bR$ (in this case) modelled using a neural network.
 
-		The objective now is to compute the posterior over $\vz$ given the observation $\vx$. This would allow us to model the predictive posterior using samples of $\vz$ from this posterior. Since the posterior $\prob{\vz \pipe \cD}$ is intractable, we approximate it using a proposal distribution $\cQ(\vz \pipe \vx, \vphi)$. We use the standard Black Box Variational Inference strategy to estimate the posterior, by maximizing the ELBO bound using descent methods, which is given as
+		The objective now is to compute the posterior over $\vz$ given the observation $\vx$. This would allow us to model the predictive posterior using samples of $\vz$ from this posterior. Since the posterior $\prob{\vz \pipe \cD}$ is intractable, we approximate it using a proposal distribution $\cQ\para{\vz \pipe \vx, \vphi}$. We use the standard Black Box Variational Inference strategy to estimate the posterior, by maximizing the ELBO bound using descent methods, which is given as
 		\begin{align*}
-			\cL(\vx; \cQ) &\eq \log{\prob{\vx}} - \text{KL}\brac{\cQ(\vz; \vphi)\ ||\ \prob{\vz \pipe \vx}} \\
-			&\eq \E[\vz \sim \cQ(\vz \spipe \vx, \vpi)]{\log{\frac{\prob{\vx, \vz}}{\cQ\para{\vz \pipe \vx, \vphi}}}}
+			\cL(\vx; \cQ) &\eq \log{\prob{\vx}} - \text{KL}\brac{\cQ\para{\vz; \vphi}\ ||\ \prob{\vz \pipe \vx}} \\
+			&\eq \E[\vz \sim \cQ\para{\vz \spipe \vx, \vpi}]{\log{\frac{\prob{\vx, \vz}}{\cQ\para{\vz \pipe \vx, \vphi}}}}
 		\end{align*}
 		Typically, the prior over the latent variables $\vz$ is assumed to be a multivariate normal distribution with mean $\vzero$ and variance matrix $\vI$.
 
@@ -97,6 +97,19 @@
 
 \begin{psection}{Variational Deep Embeddings}
 
+	\begin{algo}[0.9\textwidth]{Generative Story}
+
+		The generative story for a mixture madel based on latent variables can be written as
+		\begin{align*}
+			c				&\qsim \text{Cat}\para{\vpi} \\
+			\vz \pipe c = k	&\qsim \ND{\vz \pipe \vmu_k, \Sigma_k} \\
+			\vx \pipe \vz	&\qsim p\para{\vx \pipe \func{f}{\vz; \vphi}, \func{f}{\vz; \vphi}}
+		\end{align*}
+
+		In our case, we model the function $f$ using a neural network. The probability distribution $p$ can be any distribution which is apt for the data space. For example, if the data space is real, \ie $\cx = \bR$, then the probability distribution can be a Gaussian, with the function $f$ feeding the mean and the variance of the gaussian.
+
+	\end{algo}
+
 	Variational Deep Embedding (VaDE) was proposed by \cite{vade}. It is a simplistic model than the previous models discussed, and greatly simplifies the generic generative story by assuming a uniform prior on the cluster means, variances, and misture proportions. Also, it assumes a uniform prior on the model parameters $\vtheta$.
 
 	\begin{figure}[h]
@@ -114,19 +127,19 @@
 	An instance of VaDE is tuned to maximize the likelihood of the given data points. Given the generative process described above we have
 	\begin{align*}
 		\logp{\prob{\vx}} &\eq \log{\int_\vz \sum_c \prob{\vx, \vz, c} \id \vz} \\
-		&\qge \E[\cQ(\vz, c \spipe x)]{\logp{\frac{\prob{\vx, \vz, c}}{\cQ(\vz, c \pipe \vx)}}} \eq \cL_{\text{ELBO}}
+		&\qge \E[\cQ\para{\vz, c \spipe \vx}]{\logp{\frac{\prob{\vx, \vz, c}}{\cQ\para{\vz, c \pipe \vx}}}} \eq \cL_{\text{ELBO}}
 	\end{align*}
-	where $\cQ(\vz, c \pipe \vx)$ is the proposal distribution.
+	where $\cQ\para{\vz, c \pipe \vx}$ is the proposal distribution.
 
 	Mean field is assumed on the proposal distribution, giving:
 	\begin{align*}
-		\cQ(\vz, c \pipe \vx) &\eq \cQ(\vz \pipe \vx) \cQ(c \pipe \vx)
+		\cQ\para{\vz, c \pipe \vx} &\eq \cQ\para{\vz \pipe \vx} \cQ\para{c \pipe \vx}
 	\end{align*}
 
-	Similar to VAE, the distribution $\cQ(\vz \pipe \vx)$ is modelled using a neural network $g$ as follows
+	Similar to VAE, the distribution $\cQ\para{\vz \pipe \vx}$ is modelled using a neural network $g$ as follows
 	\begin{align*}
 		\tilde{\vmu}, \logp{\tilde{\vsigma}^2} &\eq g(\vx, \vphi) \\
-		\cQ(\vz \pipe \vx) &\eq \ND{\vz \pipe \tilde{\vmu}, \tilde{\vsigma}^2 \vI}.
+		\cQ\para{\vz \pipe \vx} &\eq \ND{\vz \pipe \tilde{\vmu}, \tilde{\vsigma}^2 \vI}.
 	\end{align*}
 
 	Further, a decoder model is added giving the following:
@@ -134,18 +147,18 @@
 		\prob{\vx \pipe \vz} &\eq \prob{\vx \pipe f(\vz, \vtheta)}
 	\end{align*}
 
-	The authors use an interesting approach to ``approximating'' the proposal distribution $\cQ(c \pipe \vx)$, which although looks absurd, in practice works surprisingly well. First, one can realize, the ELBO can be re-written in the following manner,
+	The authors use an interesting approach to ``approximating'' the proposal distribution $\cQ\para{c \pipe \vx}$, which although looks absurd, in practice works surprisingly well. First, one can realize, the ELBO can be re-written in the following manner,
 	\begin{align*}
-		\cL_{\text{ELBO}} &\eq 	\E[\cQ(\vz, c \spipe \vx)]{\logp{\frac{\prob{\vx, \vz, c}}{\cQ(\vz, c \pipe \vx)}}} \\
-		&\eq					\int_{\vz} \sum_{c} \cQ(c \pipe \vx) \cQ(\vz \pipe \vx) \set{\logp{\frac{\prob{\vx \pipe \vz} \prob{\vz}}{\cQ(\vz \pipe \vx)}} + \logp{\frac{\prob{c \pipe \vz}}{\cQ(c \pipe \vx)}}} \\
-		&\eq \int_{\vz} \cQ(\vz \pipe \vx) \logp{\frac{\prob{\vx \pipe \vz} \prob{\vz}}{\cQ(\vz \pipe \vx)}} \id \vz - \int_{\vz} \cQ(\vz \pipe \vx) \kld{\cQ(c \pipe \vx)}{\prob{c \pipe \vz}} \id \vz
+		\cL_{\text{ELBO}} &\eq 	\E[\cQ\para{\vz, c \spipe \vx}]{\logp{\frac{\prob{\vx, \vz, c}}{\cQ\para{\vz, c \pipe \vx}}}} \\
+		&\eq					\int_{\vz} \sum_{c} \cQ\para{c \pipe \vx} \cQ\para{\vz \pipe \vx} \set{\logp{\frac{\prob{\vx \pipe \vz} \prob{\vz}}{\cQ\para{\vz \pipe \vx}}} + \logp{\frac{\prob{c \pipe \vz}}{\cQ\para{c \pipe \vx}}}} \\
+		&\eq \int_{\vz} \cQ\para{\vz \pipe \vx} \logp{\frac{\prob{\vx \pipe \vz} \prob{\vz}}{\cQ\para{\vz \pipe \vx}}} \id \vz - \int_{\vz} \cQ\para{\vz \pipe \vx} \kld{\cQ\para{c \pipe \vx}}{\prob{c \pipe \vz}} \id \vz
 	\end{align*}
 
 	In order to maximize the above ELBO, it seems we need to minimize the average KL Divergence over the latent variables, when sampled using the posterior. \et{Jiang et al.} approximated this simply using only one sample of $\vz$ and therefore, we can write 
 	\begin{align*}
-		\cQ(c \pipe \vx) \eq \prob{c \pipe \vz = \hat{\vz}} \eq \frac{\prob{c} \prob{\vz = \hat{\vz} \pipe c}}{\sum_{c' = 1}^{K} \prob{c'} \prob{\vz = \hat{\vz} \pipe c'}}
+		\cQ\para{c \pipe \vx} \eq \prob{c \pipe \vz = \hat{\vz}} \eq \frac{\prob{c} \prob{\vz = \hat{\vz} \pipe c}}{\sum_{c' = 1}^{K} \prob{c'} \prob{\vz = \hat{\vz} \pipe c'}}
 	\end{align*}
-	where $\hat{\vz}$ is a sample from the posterior proposal $\cQ(\vz \pipe \vx)$.
+	where $\hat{\vz}$ is a sample from the posterior proposal $\cQ\para{\vz \pipe \vx}$.
 
 	Given the simplicity of the model, we performed some experiments on it. We implemented the complete model on Tensorflow from scratch, and performed experiments on a couple of datasets. This is discussed in detail in the following section.
 \end{psection}
@@ -205,22 +218,136 @@
 \end{psection}
 
 \begin{psection}{VaDE with Mixture of Experts}
-% Add Theory on VaDE as gating function ( Loss + Inference method)
-% Add problems in this (test time inaccuracy + slow inference <- due to inaccurate estimation of p(c | x, y) (same problem with original vade))
-	The VaDE model originally described in \cite{vade} is used to learn cluster assignments and also work as a generative model. For using VaDE in classification/regression tasks, the original theory can be extended in a straight-forward manner by maximizing the log of joint probability for $\vX$ \& $\vY$.
+	The VaDE model originally described in \cite{vade} is used to learn cluster assignments and also works as a generative model. For using VaDE in classification/regression tasks, the original theory can be extended in a straight-forward manner by maximizing an appropriate loss function. This loss function needs to include the predicted label ($\vy$) along with reconstruction of $\vx$. Although general learning models would maximise the log-likelihood \ie $\prob{\vy \pipe \vx}$, we are aiming to build a generative model and therefore our maximization objective will be $\prob{\vx, \vy}$.
 	\begin{align*}
 		\logp{\prob{\vx, \vy}} &\eq \log{\int_\vz \sum_c\prob{\vx, \vy, \vz, c}} \\
-		&\qge \E[\cQ(\vz, c \spipe \vx, \vy)]{\logp{\frac{\prob{\vx, \vz, c}}{\cQ(\vz, c \pipe \vx, \vy)}}} \eq \cL_{\text{ELBO}}
+		&\qge \E[\cQ\para{\vz, c \spipe \vx, \vy}]{\logp{\frac{\prob{\vx, \vy, \vz, c}}{\cQ\para{\vz, c \pipe \vx, \vy}}}}\\
+		&\eq \E[\cQ\para{\vz, c \spipe \vx, \vy}]{\logp{\prob{\vy \pipe \vx, \vz, c}}} + \E[\cQ\para{\vz, c \spipe \vx, \vy}]{\logp{\frac{\prob{\vx, \vz, c}}{\cQ\para{\vz, c \pipe \vx, \vy}}}} \\
+		&\eq \cL_{\text{ELBO}}
 	\end{align*}
+	Note that the second part of this formulation closely resembles the original $\cL_{\text{ELBO}}$, except for an additional $\vy$ term in the proposal distribution. The proposal distribution $\cQ$ can be modelled as follows:
+	\begin{align*}
+		\cQ\para{\vz, c \pipe \vx, \vy} &= \cQ\para{c \pipe \vx, \vy}\cQ\para{\vz \pipe \vx, \vy, c}
+	\end{align*}
+	Again, assuming Mean Field approximation, we can write $\cQ\para{\vz \pipe \vx, \vy, c} = \cQ\para{\vz \pipe \vx, \vy}$. Further, the latent representation $\vz$ can be assumed to be independent of $\vy$ conditioned on $\vx$. So, we can further simplify $ \cQ\para{\vz \pipe \vx, \vy} = \cQ\para{\vz \pipe \vx}$
+
+	The estimate for $\cQ\para{c \pipe \vx, \vy}$ remains exactly the same as that of $\cQ\para{c \pipe \vx}$ in the original VaDE model, and is approximated as:
+	\begin{align*}
+		\cQ\para{c \pipe \vx, \vy} \eq \prob{c \pipe \vz = \hat{\vz}} \eq \frac{\prob{c} \prob{\vz = \hat{\vz} \pipe c}}{\sum_{c' = 1}^{K} \prob{c'} \prob{\vz = \hat{\vz} \pipe c'}}
+	\end{align*}
+% NOTE: show derivation if needed
+
+	Therefore, the second part remains exactly same as that of the original VaDE model. The first part of $\cL_{\text{ELBO}}$ is the familiar supervised learning term. Since $\vy$ can be assumed to depend only on $\vx$ and $c$, we have:
+	$$ \prob{\vy \pipe \vx, \vz, c} = \prob{\vy \pipe \vx, c} $$
+	Depending on the task at hand, $\prob{\vy \pipe \vx, c}$ can be modelled in various ways. For a regression task, we can use a linear model $\left\{ \vW_c, \vb_c \right\}_{c=1}^{K}$, so that maximizing $\prob{\vy \pipe \vx, c}$ is equivalent to minimizing $ \left(\hat{\vy} - \para{\vW_c\vx + \vb_c}\right)^2$
+
+	\begin{psubsection}{Test Time Approximations}
+		During test time, we have to estimate $\prob{\vy \pipe \vx}$. We can wirte this as follows:
+		\begin{align*}
+			\prob{\vy \pipe \vx} &\eq \sum_c \prob{c\pipe\vx}\prob{\vy \pipe \vx, c} \\
+			&\eq \sum_c \para{\int_{\vz} \prob{c\pipe\vx, \vz}\prob{\vz \pipe \vx}}\prob{\vy \pipe \vx, c}\\
+			&\eq \sum_c \para{\E[\prob{\vz \pipe \vx}]{\prob{c\pipe\vz}}}\prob{\vy \pipe \vx, c}
+		\end{align*}
+		We again assume that $c$ is independent of $\vx$ conditioned on $\vz$. Further, we can use monte carlo estimates to compute the expectation, and $\prob{c\pipe\vz}$ is estimated using the same approximation as that used during inference.
+	\end{psubsection}
+
+	\begin{psubsection}{Shortcomings of VaDE model}
+		A major shortcoming of the VaDE model is using a single sample to approximate $\cQ\para{c \pipe \vx, \vy}$. The requirement for zeroing out the KL divergence is that $\cQ\para{c \pipe \vx, \vy}$ is exactly equal to $\prob{c \pipe \vz}$ at all points, which is not true in general. However, using a single $\hat{\vz}$ introduces deviations from actual value which leads to slow inference.
+
+		Also, during test time, we need to approximate $\mathbb{E}_{\mathbb{P}[\vz \pipe \vx]}{\prob{c\pipe\vz}}$ which uses the same approximation along with monte carlo estimates which are known to have high variance. Hence, this may lead to inaccuracies during test time.
+	\end{psubsection}
 \end{psection}
 
-\begin{psection}{Discrete Variational Mixture of Experts}
+\begin{psection}{Discrete Mixture Variational Autoencoders}
 
-	As pointed out in the previous section, VaDE suffers from two prime problems, slow inference and slow and inaccurate predictions. We try to design a gating function keeping these two problems in mind.
+	As pointed out in the previous section, a gating function based on VaDE will suffer from two prime problems, slow inference and slow and inaccurate predictions. We try to design a gating function keeping these two problems in mind.
+
+	We follow the same generative story as outlined in algorithm \hyperlink{algo:1}{1}, and use the same mean-field assumption as VaDE, \ie $\cQ\para{\vz, c \pipe \vx} = \cQ\para{\vz \pipe \vx} q(c \pipe \vx)$. Therefore, we can write the ELBO in the same way oulined in VaDE.
+
+	In order to tackle the problems in VaDE, we propose to add a separate encoder network for inferring the latent variable $c$, \ie the cluster assignment. The sole problem in the formulation is the discontinuous nature of the latent variable $c$. Since the variable is a categorical one, it is not possible to find a deterministic reparametrization formulation, we cannot use backpropogation over this stochastic node. However, there exist methods which facilitate black box variational inference with binary/categorical stochastic nodes.
+
+	The most popular strategy to facilitate BBVI, and therefore backpropogation over discrete nodes is Gumbel-Softmax. Briefly, the gumbel-softmax trick relaxes the discrete variables to continuous ones, and allow backpropogation through an appropriate reparametrization function. The details of this trick are mentioned in the following section.
+
+	\begin{psubsection}{Gumbel Softmax Trick}
+
+		As mentioned, we need to find a smooth relaxation for discrete latent variables, along with an apt reparametrization variable to allow backpropogation, and therefore inference using black box variational inference for a model.
+
+		Firstly, we need to look at how we can sample from a categorical (consider single dimension) variable. The typical way of doing so would be to sample a uniform random variable (from 0 to 1), U and return the categorical variable as follows
+		\begin{align*}
+			\sC \eq \argmin{k \in \brac{K}} \sU - \sum_{k' = 1}^k \pi_{k'}
+		\end{align*}
+
+		\note{The parameters $\set{\pi_k}_{k = 1}^K$ denote the probabilities of each class for the categorical distribution, and therefore $\sum_{k = 1}^K \pi_k = 1$. Below, we alternately use weights $\set{\alpha_k}_{k = 1}^K$ instead of probabilities, and therefore, we will have $\pi_k = \frac{\alpha_k}{\sum_{k' = 1}^{K} \alpha_{k'}}$}
+
+		An alternate way, however, to sample from the categorical distribution is by using the Gumbel-Max trick (upon which the Gumbel-Softmax is based). The Gumbel-Max trick says that in order to sample from a categorical distribution with weights $\set{\alpha_k}_{k = 1}^K$, we sample $K$ uniform random variables $\set{\sU_k}_{k = 1}^{K}$ and reparametrize as follows
+		\begin{align*}
+			\sC \eq \argmax{k \in \brac{K}} \log{\alpha_k} - \log{- \log{\sU_k}}
+		\end{align*}
+
+		The variable $-\log{-\log{U}}$ is known to be from the Gumbel disitribution. This alternate sampling strategy allows us to write the relaxed version of the random variable C (denoted by $\vZ = \brac{\sZ_1 \dots \sZ_K}$). which is then given as
+		\begin{align*}
+			\sZ_k \eq \frac{\texp{\para{\log{\alpha_k} + \sG_k} / \tau}}{\sum_{k' = 1}^K \texp{\para{\log{\alpha_{k'}} + \sG_{k'}} / \tau}}
+		\end{align*}
+		where $\sG_k$ is a sample from the gumbel distribution, and $\tau$ is a parameter, known as the temperature. It is obvious to see that as $\tau \ra 0$, the smooth relaxation $Z_k \ra \is{C = k}$.
+
+		Following other details from the Concrete paper, we are able to train VAEs with (relaxed) discrete latent variables. This, now. allows us to model the posterior for the latent variable $c$ using an encoder network.
+
+	\end{psubsection}
+
+	As we have an estimate of the posterior of all the latent variables, we do not need an approximation to compute $\cQ\para{c \pipe \vx}$ as was the case in VaDE. The remaining model remains the same, with K means and variances as the prior parameters, and the same KL computation as in VaDE. One difference, however, we have from VaDE is that we have a uniform prior on the category probabilities, \ie, in the prior for $c$, we assume each cluster to have equal probability. This can, however, be easily removed as it does not change the computations at any point. We call this model Discrete Mixture Variational Autoencoder (DMVAE).
+
+	Modelling the posterior of the latent variable C allows faster inference possible. We document the difference in inference time and results between DMVAE and VaDE in section 8. Our hypothesis is that this occurs due to the added noise in approximating $\cQ\para{c \pipe \vx}$ using a single sample. If we take a look at the expanded ELBO term in the VaDE paper (for normal distribution over $\vx \pipe \vz$), it shows a similar problem Black Box Variational Inference faces without reparametrization. Due to the shortage of time, we could not emperically confirm this hypothesis but the faster inference for DMVAE endorses this hypothesis.
+
+	This formulation of DMVAE easily extends to Mixture of Experts models with the DMVAE model as a variational gating function. We look at the details of the same in the next section.
+
+\end{psection}
+
+\begin{psection}{Mixture of Experts with DMVAE}
+
+	Since we do not alter the general formulation of the ME models, we can still write the basic equations. That is, for some latent variable C denoting the cluster/mixture assignment, we have
+	\begin{align*}
+		\prob{\vy \pipe \vx} \eq \sum_{k = 1}^{K} \prob{c = k \pipe \vx} \prob{\vy \pipe \vx, c = k}
+	\end{align*}
+
+	As discussed in earlier sections, we can model $\vy \pipe \vx, c$ using an appropriate distribution (commonly exponential family). The posterior probabily for cluster assingment. in case of VaDE, caused problems during test time, as discussed. In case of DMVAE, we avoid this problem by approximating the posterior using a neural network (encoder network). This, therefore, saves time during prediction by avoiding sampling of latent variable $Z$.
+
+	Morevover, we still use the mean field assumption, same as VaDE. However, for the case of ME with DMVAE, we estimate the posterior $\prob{\vz, c \pipe \vx, \vy}$ using $\cQ\para{\vz, c \pipe \vx, \vy}$ having the following assumptions
+	\begin{align*}
+		\cQ\para{\vz, c \pipe \vx, \vy} &\eq \cQ\para{\vz, c \pipe \vx} \\
+		&\eq \cQ\para{\vz \pipe \vx} \cQ\para{c \pipe \vx}
+	\end{align*}
+
+	We can now write the loss function. Similar to VaDE based ME, we need to maximize the probability $\prob{\vx, \vy}$. However, since we now can compute the exact (estimate of) posterior $\cQ\para{c \pipe \vx}$, we can alter the lower bound to be tighter than the ELBO term used for ME with VaDE. This also has an additional benifit highlighted later in this section. This altered lower bound can be written as
+	\begin{align*}
+		\logp{\prob{\vy, \vx}} &\eq \logp{\prob{\vy \pipe \vx}} + \logp{\prob{\vx}} \\
+		&\qge	\logp{\prob{\vy \pipe \vx}} + \E[\vz, c \spipe \vx]{\log{\frac{\prob{\vz, c, \vx}}{\cQ\para{\vz, c \pipe \vx}}}} \\
+		&\eq	\logp{\prob{\vy \pipe \vx}} + \E[\vz, c \spipe \vx]{\logp{\prob{\vx \pipe \vz, c}} + \log{\frac{\prob{\vz \pipe c}}{\cQ\para{\vz \pipe \vx}}} + \log{\frac{\prob{c}}{\cQ\para{c \pipe \vx}}}} \\
+		\cL(\vx, \vy)	&\eq	\logp{\prob{\vy \pipe \vx}} + \E[\vz \spipe \vx]{\logp{\prob{\vx \pipe \vz}}} - \E[c \spipe \vx]{\kld{\cQ\para{\vz \pipe \vx}}{\prob{\vz \pipe c}}} \\&\hspace{1.1cm}- \kld{\cQ\para{c \pipe \vx}}{\prob{c}}
+	\end{align*}
+
+	Each term can be intuitively understood, with the first term maximizing the likelihood, the second term maximizing the reconstruction power of the VAE, the third term ensuring low divergence between the prior cluster mean and the posterior encoded mean, and the last term ensuring low divergence between the mixing proportions in the prior and the posterior for the latent variable C.
+
+	The third term has the prior conditioned on C for each KL Divergence term. This conditioning is not deterministic on the mixing proportions (encoder network for C), and therefore we replace C (for this term) with its smooth relaxation using the Gumbel-Softmax Trick, say $\zeta$. Since $\zeta$ is continuous and we cannot comput the expectation term analytically, we need to use Monte Carlo tricks, same as what is done for Z in a standard VAE (and will be done for the second term here as well). We can, therefore, write the relaxed object $\widetilde{\cL}$ as follows
+	\begin{align*}
+		\widetilde{\cL}(\vx, \vy)		&\eq	\logp{\prob{\vy \pipe \vx}} + \E[\vz \spipe \vx]{\logp{\prob{\vx \pipe \vz}}} - \E[\vz, \vzeta \spipe \vx]{\kld{\cQ\para{\vz \pipe \vx}}{\prob{\vz \pipe \vzeta}}} \\&\hspace{1.1cm}- \kld{\cQ\para{c \pipe \vx}}{\prob{c}}
+	\end{align*}
+
+	Although $\widetilde{\cL}$ isn't necessarily a lower bound for the objective $\logp{\prob{\vx, \vy}}$, however, empirically it seems to work (section 8).
+
+	\note{We must ensure the relaxed prior probability $\prob{\vz \pipe \vzeta}$ limits to $\prob{\vz \pipe c}$ as $\tau \ra 0$}
+
+	\bt{Advantages of Using DMVAE as a gating function}
+	\begin{enumerate}
+			\ditem[Automatic Differentiation] Use of Black Box Variational Inference with the reparametrization and gumbel trick allows us to use automaic differentiation libraries (such as Tensorflow) to compute the gradients and therefore infer the parameters of the model using gradient based techniques. This is not possible with models using the EM algorithm, as the updates need to be manually coded.
+			\ditem[Handling of Arbitrary Shaped Clusters] As pointed out earlier, clustering in latent space with non-linear transformations (decoder) allows us to even cluster data split in arbitrary shaped clusters. DMVAE, therefore accurately handles clustering of data at least as good as some other non-trivial models (such as VaDE). This also helps in learning mixture of experts models where the data is complicated or high-dimensional.
+			\ditem[Fast Inference] Since VAEs, and henceforth DMVAE, use amortized inference and reparametrization, the inference is usually fast. Coupled with automatic differentiation, this affors a ``nice'' model for ME and/or clustering tasks.
+	\end{enumerate}
 
 \end{psection}
 
 \begin{psection}{Experiments}
+
+	Firstly, we show some experiments on VaDE and DMVAE showing reconstruction and generation powers of the models. The datasets we use for these tasks are MNIST \cite{<++>} and spiral dataset. Later, we show the effectiveness of DMVAE over naive gating functions for ME.
 
 	\begin{psubsection}{VAE Training}
 
@@ -231,7 +358,18 @@
 
 	\begin{psubsection}{ME Results}
 
-	% Results of our model vs DMOE vs (if possible) VaDE ME
+\begin{table}
+	\centering
+	\begin{tabular}{c | l l | l l}
+		\bt{Number of Dimensions}	& \bt{Deep MoE}	& \bt{DVMoE}	&	\bt{Deep MoE}	& \bt{DVMoE}\\
+		\hline
+		1							& 10.0424		& \bt{0.0312}		& \bt{28.4584}	& 34.0551 \\
+		2							& 20.4247		& \bt{0.0434}		& \bt{209.028}	& \bt{208.142} \\
+		5							& 180.117		& \bt{96.1049}		& 180.117		& \bt{96.1049}\\
+	\end{tabular}
+	\caption{<+Caption text+>}
+	\label{tab:<+label+>}
+\end{table}<++>
 
 	\end{psubsection}
 
@@ -240,7 +378,6 @@
 \begin{psection}{Related Work}
 
 \end{psection}
-
 
 \begin{psection}{Conclusion}
 

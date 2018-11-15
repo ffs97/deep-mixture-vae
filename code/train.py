@@ -28,15 +28,22 @@ flags.DEFINE_string(
 flags.DEFINE_string(
     "dataset", "mnist", "Dataset to use [mnist, spiral]"
 )
+
 flags.DEFINE_integer(
     "latent_dim", 10, "Number of dimensions for latent variable Z"
-)
-flags.DEFINE_boolean(
-    "moe", False, "Whether to run the ME model"
 )
 flags.DEFINE_integer(
     "output_dim", 1, "Output dimension for regression variable for ME models"
 )
+
+flags.DEFINE_integer(
+    "n_epochs", 500, "Number of epochs for training a model"
+)
+
+flags.DEFINE_boolean(
+    "moe", False, "Whether to run the ME model"
+)
+
 flags.DEFINE_boolean(
     "plotting", True, "Whether to generate sampling and regeneration plots"
 )
@@ -53,6 +60,8 @@ def main(argv):
 
     plotting = FLAGS.plotting
     plot_epochs = FLAGS.plot_epochs
+
+    n_epochs = FLAGS.n_epochs
 
     if dataset == "mnist":
         n_clusters = 10
@@ -132,7 +141,10 @@ def main(argv):
     sess = tf.Session()
     tf.global_variables_initializer().run(session=sess)
 
-    with tqdm(range(500), postfix={"loss": "inf"}) as bar:
+    if model_str == "dvmoe":
+        model.pretrain(sess, train_data, 100)
+
+    with tqdm(range(n_epochs), postfix={"loss": "inf"}) as bar:
         for epoch in bar:
             if plotting and epoch % plot_epochs == 0 and epoch != 0:
                 sample_plot(model, sess)

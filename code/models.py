@@ -1,6 +1,7 @@
 import priors
 import tensorflow as tf
 
+from includes.utils import Dataset
 from includes.network import FeedForwardNetwork
 
 
@@ -343,7 +344,7 @@ class DeepMoE:
 
             self.error = tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
-            )
+            ) * self.output_dim
 
             return self
 
@@ -451,7 +452,7 @@ class DVMoE:
 
             self.error = tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
-            )
+            ) * self.output_dim
 
             return self
 
@@ -478,15 +479,32 @@ class DVMoE:
 
         self.loss = self.vae.loss + self.recon_loss
 
-    def define_train_step(self, init_lr, decay_steps, decay_rate=0.9):
+    def pretrain(self, session, data, n_epochs):
+        data = Dataset(data.data, data.batch_size, data.shuffle)
+        for _ in range(n_epochs):
+            self.vae.train_op(session, data)
+
+    def define_train_step(self, init_lr, decay_steps, decay_rate=0.9, pretrain_init_lr=None,
+                          pretrain_decay_steps=None, pretrain_decay_rate=None):
+        self.define_train_loss()
+
+        if pretrain_init_lr is None:
+            pretrain_init_lr = init_lr
+        if pretrain_decay_rate is None:
+            pretrain_decay_rate = decay_rate
+        if pretrain_decay_steps is None:
+            pretrain_decay_steps = decay_steps
+
+        self.vae.define_train_step(
+            pretrain_init_lr, pretrain_decay_steps, pretrain_decay_rate)
+
         learning_rate = tf.train.exponential_decay(
-            learning_rate=init_lr,
+            learning_rate=pretrain_init_lr,
             global_step=0,
-            decay_steps=decay_steps,
-            decay_rate=decay_rate
+            decay_steps=pretrain_decay_steps,
+            decay_rate=pretrain_decay_rate
         )
 
-        self.define_train_loss()
         self.train_step = tf.train.AdamOptimizer(
             learning_rate=learning_rate
         ).minimize(self.loss)
