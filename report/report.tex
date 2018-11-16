@@ -154,7 +154,7 @@
 		&\eq \int_{\vz} \cQ\para{\vz \pipe \vx} \logp{\frac{\prob{\vx \pipe \vz} \prob{\vz}}{\cQ\para{\vz \pipe \vx}}} \id \vz - \int_{\vz} \cQ\para{\vz \pipe \vx} \kld{\cQ\para{c \pipe \vx}}{\prob{c \pipe \vz}} \id \vz
 	\end{align*}
 
-	In order to maximize the above ELBO, it seems we need to minimize the average KL Divergence over the latent variables, when sampled using the posterior. \et{Jiang et al.} approximated this simply using only one sample of $\vz$ and therefore, we can write 
+	In order to maximize the above ELBO, it seems we need to minimize the average KL Divergence over the latent variables, when sampled using the posterior. \et{Jiang et al.} approximated this simply using only one sample of $\vz$ and therefore, we can write
 	\begin{align*}
 		\cQ\para{c \pipe \vx} \eq \prob{c \pipe \vz = \hat{\vz}} \eq \frac{\prob{c} \prob{\vz = \hat{\vz} \pipe c}}{\sum_{c' = 1}^{K} \prob{c'} \prob{\vz = \hat{\vz} \pipe c'}}
 	\end{align*}
@@ -345,31 +345,100 @@
 
 \end{psection}
 
-\begin{psection}{Experiments}
 
-	Firstly, we show some experiments on VaDE and DMVAE showing reconstruction and generation powers of the models. The datasets we use for these tasks are MNIST \cite{<++>} and spiral dataset. Later, we show the effectiveness of DMVAE over naive gating functions for ME.
+\begin{psection}{Experiments}
+	We conducted a variety of experiments to test the robustness of our algorithm. The datasets we use for these tasks are MNIST \cite{<++>} and spiral dataset. Firstly, we show some experiments on VaDE and DMVAE showing reconstruction and generation powers of the models. Later, we show the effectiveness of DMVAE over naive gating functions for ME.
 
 	\begin{psubsection}{VAE Training}
+		The VaDE and DMVAE models in addition to learning cluster assignments also allow us to generate new data points. This section details our findings of how well these models learnt to reconstruct the original image along with their power to produce new novel images.
+		\begin{pssubsection}{MNIST Dataset}
+			The MNIST dataset contains 60,000 training images and 10,000 testing images, each image being greyscaled and of size $28 \times 28$. The images represent digits from 0 to 9, and are labelled accordingly.
 
-	% Breifly highlight differences between the model in terms of learning cluster assignments
-	% VaDE vs Our model reconstruction + TSNE + sampling plots
+			Figures \ref{fig:dmvae_mnist_regen} and \ref{fig:vade_mnist_regen} show the reconstruction power of DMVAE and VaDE models, respectively, trained using MNIST dataset. It can be clearly seen that both models have learnt to reproduce images well.
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/dmvae/mnist/regenerated.png}
+				\caption{Using DMVAE: Original(left) vs Reconstructed(right)}
+				\label{fig:dmvae_mnist_regen}
+			\end{figure}
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/vade/mnist/regenerated.png}
+				\caption{Using VaDE: Original(left) vs Reconstructed(right)}
+				\label{fig:vade_mnist_regen}
+			\end{figure}
 
+			Figures \ref{fig:dmvae_mnist_sampled} and \ref{fig:vade_mnist_sampled} show the comparison of performances in generating new images between DMVAE and VaDE. Each row corresponds to images generated as belonging to the same cluster by the model. It can be clearly seen that baring a few exceptions, the models produce extremely real looking images of digits, and hence can be used as powerful generative models.
+
+			Moreover, in case of VaDE, we can see higher ambiguity between two clusters (both produce digit 1), which was not observed in our model.
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/dmvae/mnist/sampled.png}
+				\caption{Using DMVAE: Generated Images(left) and tSNE plots(right)}
+				\label{fig:dmvae_mnist_sampled}
+			\end{figure}
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/vade/mnist/sampled.png}
+				\caption{Using VaDE: Generated Images(left) and tSNE plots(right)}
+				\label{fig:vade_mnist_sampled}
+			\end{figure}
+
+		\end{pssubsection}
+		\begin{pssubsection}{Spiral Dataset}
+			Spiral dataset is an artificial dataset used by us to test the performance of our models. The spiral dataset has complicated decision boundary shapes which are not easily learnt by most models. Our dataset consists of 5 classes and we again compare the reconstruction and generative powers of both DMVAE and VaDE models for this dataset.
+
+			Figures \ref{fig:dmvae_spiral_regen} and \ref{fig:vade_spiral_regen} show the reconstructed datapoints by DMVAE and VaDE models respectively. Both models are able to reconstruct the points quite well, however, one interesting aspect to note is that the reconstructed points in DMVAE model suffer from very low variance and are tightly bound to their clusters, which is significantly higher in points reconstructed using VaDE model. Although this difference is quite minute, it verifies our claim that inference in DMVAE is better than that in VaDE.
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/dmvae/spiral/regenerated.png}
+				\caption{Using DMVAE: Original(left) vs Reconstructed(right)}
+				\label{fig:dmvae_spiral_regen}
+			\end{figure}
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/vade/spiral/regenerated.png}
+				\caption{Using VaDE: Original(left) vs Reconstructed(right)}
+				\label{fig:vade_spiral_regen}
+			\end{figure}
+
+			Figures \ref{fig:dmvae_spiral_sampled} and \ref{fig:vade_spiral_sampled} show the points generated by DMVAE and VaDE models using spiral dataset. It is evident that the DMVAE model clearly outperforms VaDE model in this case, since VaDE is unable to distinguish between the green and blue clusters(see \ref{fig:vade_spiral_sampled}). On the other hand, DMVAE generates the points almost similar to real dataset and learns very well defined clusters. This proves that for general use cases, DMVAE is superior to VaDE.
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/dmvae/spiral/sampled.png}
+				\caption{Using DMVAE: Generated Points(left) and tSNE plots(right)}
+				\label{fig:dmvae_spiral_sampled}
+			\end{figure}
+			\begin{figure}[H]
+				\centering
+				\includegraphics[height=200px]{includes/plots/vade/spiral/sampled.png}
+				\caption{Using VaDE: Generated Points(left) and tSNE plots(right)}
+				\label{fig:vade_spiral_sampled}
+			\end{figure}
+		\end{pssubsection}
+
+		The biggest difference between VaDE and DMVAE is the training time and convergence rate. As a general trend, we found VaDE to converge in around 500-700 epochs, whereas DMVAE showed comparable results in only 200-300 epochs. In addition to this, the average training time for one epoch in case of VaDE was ~13s and in case of DMVAE was ~3.5s. We also observed, empirically, that VaDE performs poorly if there is no pretraining (details in the VaDE paper), but our model was more robust to initialization.
+
+		For these reasons, we consider the DMVAE model to be better than VaDE for clustering in arbitrary shapes.
 	\end{psubsection}
 
-	\begin{psubsection}{ME Results}
+	\begin{psubsection}{Mixture of Experts Results}
+		To measure the improvement provided by using Mixture of Experts with DMVAE as the gating function, we use a regression task. Each datapoint in MNIST dataset was annotated with a $K$-dimensional label, which was obtained by applying an affine transformation $f : \vX \rightarrow \vw\vX + \vb$ to the original $28\times28$ image. Here, $\vw$ and $\vb$ were chosen randomly, but were same for all points, thus ensuring that the final labels inherited the latent properties of input space. The same was done for Spiral dataset as well.
 
-\begin{table}
-	\centering
-	\begin{tabular}{c | l l | l l}
-		\bt{Number of Dimensions}	& \bt{Deep MoE}	& \bt{DVMoE}	&	\bt{Deep MoE}	& \bt{DVMoE}\\
-		\hline
-		1							& 10.0424		& \bt{0.0312}		& \bt{28.4584}	& 34.0551 \\
-		2							& 20.4247		& \bt{0.0434}		& \bt{209.028}	& \bt{208.142} \\
-		5							& 180.117		& \bt{96.1049}		& 180.117		& \bt{96.1049}\\
-	\end{tabular}
-	\caption{<+Caption text+>}
-	\label{tab:<+label+>}
-\end{table}<++>
+		First, we tried using a simple Gaussian Mixture Model as the gating function(\cite{NIPS1994_906}) using EM algorithm, where all the updates were manually calculated. However it proved to be extremely unstable and difficult to train since the probabilities quickly became 0 for higher dimensional spaces. Therefore, we had to discard using this algorithm. Nevertheless, we provide the code to implement the algorithm and are positive that the algorithm will perform well in lower dimensional spaces.
+
+		\begin{table}
+			\centering
+			\begin{tabular}{c | l l | l l}
+				& \multicolumn{2}{c|}{\bt{Spiral}}	& \multicolumn{2}{c}{\bt{MNIST}} \\ \hline
+				\bt{Number of Dimensions}	& \bt{Deep MoE}	& \bt{DVMoE}		& \bt{Deep MoE}	& \bt{DVMoE} \\ \hline
+				1							& 10.0424		& \bt{0.0312}		& \bt{28.4584}	& 34.0551 \\
+				2							& 20.4247		& \bt{0.0434}		& \bt{209.028}	& \bt{208.142} \\
+				5							& 180.117		& \bt{96.1049}		& 180.117		& \bt{96.1049}\\
+			\end{tabular}
+			\caption{Regression test results on Spiral and MNIST datasets; Deep MoE vs DVMoE}
+			\label{tab:me-results}
+		\end{table}
 
 	\end{psubsection}
 

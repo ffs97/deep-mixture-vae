@@ -63,6 +63,8 @@ def main(argv):
 
     n_epochs = FLAGS.n_epochs
 
+    print(plotting)
+
     if dataset == "mnist":
         n_clusters = 10
 
