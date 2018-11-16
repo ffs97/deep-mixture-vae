@@ -23,7 +23,7 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    "model", "dmvae", "Model to use [dmvae, dmoe, dvmoe]"
+    "model", "dmvae", "Model to use [dmvae, vade, dmoe, dvmoe, vademoe]"
 )
 flags.DEFINE_string(
     "dataset", "mnist", "Dataset to use [mnist, spiral]"
@@ -89,7 +89,7 @@ def main(argv):
     if FLAGS.moe:
         from includes.utils import MEDataset as Dataset
 
-        if model_str not in ["dmoe", "dvmoe"]:
+        if model_str not in ["dmoe", "vademoe", "dvmoe"]:
             raise NotImplementedError
 
         train_data, test_data = generate_regression_variable(
@@ -116,10 +116,17 @@ def main(argv):
                 {"Z": [256, 256, 512], "C": [256, 512]}, [512, 256]
             )
 
+        elif model_str == "vademoe":
+            model = models.VaDEMoE(
+                model_str, input_type, input_dim, latent_dim, output_dim, n_clusters,
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+            )
+            model.build_graph([512, 256], [256, 512])
+
     else:
         from includes.utils import Dataset
 
-        if model_str not in ["dmvae"]:
+        if model_str not in ["dmvae", "vade"]:
             raise NotImplementedError
 
         (train_data, _), (test_data, _) = train_data, test_data
@@ -132,6 +139,12 @@ def main(argv):
             model.build_graph(
                 {"Z": [256, 256, 512], "C": [256, 512]}, [512, 256]
             )
+        elif model_str == "vade":
+            model = models.VaDE(
+                model_str, input_type, input_dim, latent_dim, n_clusters,
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+            )
+            model.build_graph([512, 256], [256, 512])
 
     train_data = Dataset(train_data, batch_size=200)
     test_data = Dataset(test_data, batch_size=200)
@@ -141,7 +154,7 @@ def main(argv):
     sess = tf.Session()
     tf.global_variables_initializer().run(session=sess)
 
-    if model_str == "dvmoe":
+    if model_str in ["dvmoe", "vademoe"]:
         model.pretrain(sess, train_data, 100)
 
     with tqdm(range(n_epochs), postfix={"loss": "inf"}) as bar:
