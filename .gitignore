@@ -1,3 +1,6 @@
+code/savedModels/
+code/logs/
+
 *data*
 *.vscode*
 *__pycache__*
