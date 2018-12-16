@@ -23,7 +23,7 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    "model", "dmvae", "Model to use [dmvae, vade, dmoe, dvmoe, vademoe]"
+    "model", "vademoe", "Model to use [dmvae, vade, dmoe, dvmoe, vademoe]"
 )
 flags.DEFINE_string(
     "dataset", "mnist", "Dataset to use [mnist, spiral]"
@@ -41,7 +41,7 @@ flags.DEFINE_integer(
 )
 
 flags.DEFINE_boolean(
-    "moe", False, "Whether to run the ME model"
+    "moe", True, "Whether to run the ME model"
 )
 
 flags.DEFINE_boolean(
@@ -118,7 +118,7 @@ def main(argv):
 
         elif model_str == "vademoe":
             model = models.VaDEMoE(
-                model_str, input_type, input_dim, latent_dim, output_dim, n_clusters,
+                model_str, input_type, input_dim, latent_dim, output_dim, 5,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             )
             model.build_graph([512, 256], [256, 512])
@@ -172,6 +172,9 @@ def main(argv):
                 bar.set_postfix(
                     {"loss": "%.4f" % model.train_op(sess, train_data)}
                 )
+
+            if epoch % 5 == 0:
+                model.testNow(sess, train_data)
 
     if plotting:
         sample_plot(model, sess)

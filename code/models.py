@@ -780,3 +780,15 @@ class VaDEMoE:
             loss += batch_loss / data.epoch_len
 
         return loss
+
+    def testNow(self, session, data):
+        for X_batch, Y_batch, _ in data.get_batches():
+            feed = {
+                self.X: X_batch,
+                self.Y: Y_batch
+            }
+            feed.update(
+                self.vae.sample_reparametrization_variables(len(X_batch))
+            )
+            print(session.run([self.cluster_probs], feed_dict=feed))
+            break
