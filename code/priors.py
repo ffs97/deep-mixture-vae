@@ -78,8 +78,8 @@ class NormalMixtureFactorial(LatentVariable):
         else:
             c = kwargs["c"]
 
-        means, log_vars = sess.run([self.means, self.log_vars])
-        samples = means[c, :] + samples * np.exp(log_vars[c, :] / 2.0)
+        means, log_vars = sess.run([self.means[c, :], self.log_vars[c, :]])
+        samples = means + samples * np.exp(log_vars / 2.0)
 
         return samples
 
@@ -87,6 +87,20 @@ class NormalMixtureFactorial(LatentVariable):
         assert("mean" in parameters and "log_var" in parameters)
 
         return parameters["mean"] + tf.exp(parameters["log_var"] / 2) * epsilon
+
+    def get_cluster_weights(self, Z):
+        Z = Z[:, None, :]
+
+        means = self.means[None, :, :]
+        variances = tf.exp(self.log_vars)[None, :, :]
+
+        probs = tf.exp(- tf.reduce_sum(
+            tf.square(Z - means) / variances, axis=-1
+        ) / 2)
+        probs = probs / tf.sqrt(tf.reduce_prod(variances, axis=-1))
+        probs = probs / (tf.reduce_sum(probs, axis=-1, keep_dims=True) + 1e-4)
+
+        return probs
 
     def kl_from_prior(self, parameters, eps=1e-20):
         assert(
