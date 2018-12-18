@@ -134,7 +134,9 @@ class MEDataset:
 
 class Dataset:
     def __init__(self, data, batch_size=100, shuffle=True):
+        data, classes = data
         self.data = np.copy(data)
+        self.classes = np.copy(classes)
         self.batch_size = batch_size
 
         self.shuffle = shuffle
@@ -144,11 +146,17 @@ class Dataset:
         self.epoch_len = int(math.ceil(len(data) / batch_size))
 
         if shuffle:
-            np.random.shuffle(self.data)
+            indices = np.random.permutation(len(self.data))
+
+            self.data = self.data[indices]
+            self.classes = self.classes[indices]
 
     def get_batches(self):
         if self.shuffle:
-            np.random.shuffle(self.data)
+            indices = np.random.permutation(len(self.data))
+
+            self.data = self.data[indices]
+            self.classes = self.classes[indices]
 
         batch = []
         for row in self.data:

@@ -66,10 +66,10 @@ def mnist_sample_plot(model, sess, tsne=False):
     if not os.path.exists("plots/%s/mnist" % model.name):
         os.makedirs("plots/%s/mnist" % model.name)
 
-    figure = np.zeros((280, 280))
+    figure = np.zeros((28 * model.n_classes, 280))
 
     sample_Z = []
-    for i in range(0, 10):
+    for i in range(0, model.n_classes):
         kwargs = {
             "Z": {
                 "session": sess,

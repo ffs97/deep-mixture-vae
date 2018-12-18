@@ -179,7 +179,8 @@ class MoE:
             pretrain_decay_steps = decay_steps
 
         self.vae.define_train_step(
-            pretrain_init_lr, pretrain_decay_steps, pretrain_decay_rate)
+            pretrain_init_lr, pretrain_decay_steps, pretrain_decay_rate
+        )
 
         learning_rate = tf.train.exponential_decay(
             learning_rate=pretrain_init_lr,

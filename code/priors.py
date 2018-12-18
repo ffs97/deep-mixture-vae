@@ -92,18 +92,18 @@ class NormalMixtureFactorial(LatentVariable):
         Z = Z[:, None, :]
 
         means = self.means[None, :, :]
-        variances = tf.exp(self.log_vars)[None, :, :]
+        log_vars = self.log_vars[None, :, :]
 
-        probs = tf.exp(- tf.reduce_sum(
-            tf.square(Z - means) / variances, axis=-1
-        ) / 2)
-        probs = probs / tf.sqrt(tf.reduce_prod(variances, axis=-1))
-        probs = probs / (tf.reduce_sum(probs, axis=-1, keep_dims=True) + 1e-4)
-
-        return probs
+        probs = - (
+            tf.reduce_sum(
+                tf.square(Z - means) / tf.exp(log_vars), axis=-1
+            ) / 2 + tf.reduce_sum(log_vars, axis=-1)
+        )
+        return tf.nn.softmax(probs)
 
     def kl_from_prior(self, parameters, eps=1e-20):
         assert(
+            "cluster_sample" in parameters and
             "weights" in parameters and
             "log_var" in parameters and
             "mean" in parameters
@@ -115,16 +115,34 @@ class NormalMixtureFactorial(LatentVariable):
         weights = parameters["weights"]
         weights = tf.reshape(weights, (-1, self.n_classes))
 
-        prior_mean = tf.matmul(weights, self.means)
-        prior_log_var = tf.matmul(weights, self.log_vars)
+        if parameters["cluster_sample"]:
+            prior_mean = tf.matmul(weights, self.means)
+            prior_log_var = tf.matmul(weights, self.log_vars)
 
-        res = (
-            prior_log_var - log_var +
-            (
-                tf.exp(log_var) + tf.square(mean - prior_mean)
-            ) / tf.exp(prior_log_var) - 1
-        )
-        res = tf.reduce_mean(0.5 * tf.reduce_sum(res, axis=1))
+            res = (
+                prior_log_var - log_var - 1 +
+                (
+                    tf.exp(log_var) + tf.square(mean - prior_mean)
+                ) / tf.exp(prior_log_var)
+            )
+            res = tf.reduce_mean(0.5 * tf.reduce_sum(res, axis=1))
+
+        else:
+            prior_means = self.means[None, :, :]
+            prior_log_vars = self.log_vars[None, :, :]
+
+            mean = mean[:, None, :]
+            log_var = log_var[:, None, :]
+
+            res = (
+                prior_log_vars - log_var - 1 +
+                (
+                    tf.exp(log_var) + tf.square(mean - prior_means)
+                ) / tf.exp(prior_log_vars)
+            )
+            res = tf.reduce_sum(res, axis=-1)
+            res = tf.reduce_sum(res * weights, axis=-1)
+            res = tf.reduce_mean(0.5 * res)
 
         return res
 
