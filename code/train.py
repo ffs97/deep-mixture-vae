@@ -37,7 +37,7 @@ flags.DEFINE_integer("n_classes", -1,
 
 flags.DEFINE_integer("n_epochs", 500,
                      "Number of epochs for training the model")
-flags.DEFINE_integer("pretrain_epochs_vae", 50,
+flags.DEFINE_integer("pretrain_epochs_vae", 200,
                      "Number of epochs for pretraining the vae model")
 flags.DEFINE_integer("pretrain_epochs_gmm", 200,
                      "Number of epochs for pretraining the gmm model")
@@ -137,7 +137,11 @@ def main(argv):
                 model_str, input_type, input_dim, latent_dim, n_classes,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph(
-                {"Z": [512, 256, 256], "C": [512, 256]}, [256, 256, 512]
+                # {"Z": [512, 256, 256], "C": [512, 256, 256]}, [256, 256, 512]
+                {
+                    "Z": [2000, 500, 500],
+                    "C": [2000, 500, 500]
+                }, [500, 500, 2000]
             )
         elif model_str == "vade":
             model = vae_models.VaDE(
@@ -158,12 +162,21 @@ def main(argv):
     test_data = Dataset(test_data, batch_size=100)
 
     model.define_train_step(0.002, train_data.epoch_len * 10)
-    model.define_pretrain_step(0.002, train_data.epoch_len * 10)
+
+    if model_str in ["dmvae", "vade", "dvmoe", "vademoe"]:
+        model.define_pretrain_step(0.002, train_data.epoch_len * 10)
 
     sess = tf.Session()
     tf.global_variables_initializer().run(session=sess)
 
-    model.pretrain(sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm)
+    if model_str in ["dvmoe", "vademoe"]:
+        model.pretrain(
+            sess, train_data, pretrain_epochs_vae
+        )
+    elif model_str in ["vade", "dmvae"]:
+        model.pretrain(
+            sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
+        )
 
     with tqdm(range(n_epochs), postfix={"loss": "inf"}) as bar:
         for epoch in bar:

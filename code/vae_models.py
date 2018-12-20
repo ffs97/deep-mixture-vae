@@ -141,6 +141,8 @@ class DiscreteMixtureVAE(VAE):
                 encoder_layer_sizes["C"], self.X
             )
 
+            self.cluster_weights = tf.nn.softmax(self.logits)
+
             self.latent_variables.update({
                 "C": (
                     priors.DiscreteFactorial(
@@ -172,8 +174,10 @@ class DiscreteMixtureVAE(VAE):
                     {
                         "mean": self.mean,
                         "log_var": self.log_var,
-                        "weights": self.C,
-                        "cluster_sample": True
+                        # "weights": self.C,
+                        # "cluster_sample": True
+                        "weights": self.cluster_weights,
+                        "cluster_sample": False
                     }
                 )
             })
@@ -198,26 +202,46 @@ class DiscreteMixtureVAE(VAE):
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
         assert(self.train_step is not None)
 
-        learning_rate = tf.train.exponential_decay(
+        learning_rate_vae = tf.train.exponential_decay(
             learning_rate=init_lr,
             global_step=0,
             decay_steps=decay_steps,
             decay_rate=decay_rate
         )
 
-        pretrain_loss = tf.reduce_mean(
+        pretrain_vae_loss = tf.reduce_mean(
             self.recon_loss + 0.5 * tf.reduce_sum(
-                tf.exp(self.log_var) + self.mean ** 2 - self.log_var,
+                tf.exp(self.log_var) + tf.square(self.mean) - 1 - self.log_var,
                 axis=-1
             )
         )
 
-        self.pretrain_step = tf.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ).minimize(pretrain_loss)
+        self.pretrain_vae_step = tf.train.AdamOptimizer(
+            learning_rate=learning_rate_vae
+        ).minimize(pretrain_vae_loss)
+
+        learning_rate_gmm = tf.train.exponential_decay(
+            learning_rate=init_lr,
+            global_step=0,
+            decay_steps=decay_steps,
+            decay_rate=decay_rate
+        )
+
+        self.cluster_labels = tf.placeholder(
+            tf.int32, shape=(None, self.n_classes), name="cluster_labels"
+        )
+        pretrain_gmm_loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+            labels=self.cluster_labels,
+            logits=self.logits
+        )
+        pretrain_gmm_loss = tf.reduce_mean(pretrain_gmm_loss)
+
+        self.pretrain_gmm_step = tf.train.AdamOptimizer(
+            learning_rate=learning_rate_gmm
+        ).minimize(pretrain_gmm_loss)
 
     def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
-        assert(self.pretrain_step is not None)
+        assert(self.pretrain_vae_step is not None)
 
         for _ in range(n_epochs_vae):
             for batch in data.get_batches():
@@ -229,19 +253,21 @@ class DiscreteMixtureVAE(VAE):
                         len(batch), variables=["Z"]
                     )
                 )
-                session.run(self.pretrain_step, feed_dict=feed)
-
-        feed = {
-            self.X: data.data
-        }
-        feed.update(
-            self.sample_reparametrization_variables(
-                len(data.data), variables=["Z"]
-            )
-        )
-        Z = session.run(self.Z, feed_dict=feed)
+                session.run(self.pretrain_vae_step, feed_dict=feed)
 
         if n_epochs_gmm > 0:
+            size = len(data.data)
+
+            feed = {
+                self.X: data.data
+            }
+            feed.update(
+                self.sample_reparametrization_variables(
+                    size, variables=["Z"]
+                )
+            )
+            Z = session.run(self.Z, feed_dict=feed)
+
             gmm_model = GaussianMixture(
                 n_components=self.n_classes,
                 covariance_type="diag",
@@ -249,7 +275,7 @@ class DiscreteMixtureVAE(VAE):
                 n_init=5,
                 weights_init=np.ones(self.n_classes) / self.n_classes,
             )
-            gmm_model.fit(Z)
+            labels = gmm_model.fit_predict(Z)
 
             lv = self.latent_variables["Z"][0]
 
@@ -260,9 +286,15 @@ class DiscreteMixtureVAE(VAE):
 
             session.run([init_gmm_means, init_gmm_vars])
 
-            labels = gmm_model.predict(Z)
+            labels_one_hot = np.zeros((size, self.n_classes))
+            labels_one_hot[np.arange(size), labels] = 1
 
-            print(labels)
+            for _ in range(n_epochs_gmm):
+                feed = {
+                    self.X: data.data,
+                    self.cluster_labels: labels_one_hot
+                }
+                session.run(self.pretrain_gmm_step, feed_dict=feed)
 
     def get_accuracy(self, session, data):
         logits = session.run(self.logits, feed_dict={self.X: data.data})
@@ -342,6 +374,7 @@ class VaDE(VAE):
             self.cluster_weights * tf.log(self.cluster_weights + 1e-10),
             axis=-1
         ))
+        # self.latent_loss *= 2.0
 
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
         assert(self.train_step is not None)

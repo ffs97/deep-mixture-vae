@@ -97,8 +97,8 @@ class NormalMixtureFactorial(LatentVariable):
         probs = - (
             tf.reduce_sum(
                 tf.square(Z - means) / tf.exp(log_vars), axis=-1
-            ) / 2 + tf.reduce_sum(log_vars, axis=-1)
-        )
+            ) + tf.reduce_sum(log_vars, axis=-1)
+        ) / 2
         return tf.nn.softmax(probs)
 
     def kl_from_prior(self, parameters, eps=1e-20):
