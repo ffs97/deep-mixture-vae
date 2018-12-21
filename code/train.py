@@ -1,5 +1,5 @@
 import os
-import models
+# import models
 import vae_models
 import numpy as np
 import tensorflow as tf
@@ -41,6 +41,8 @@ flags.DEFINE_integer("pretrain_epochs_vae", 200,
                      "Number of epochs for pretraining the vae model")
 flags.DEFINE_integer("pretrain_epochs_gmm", 200,
                      "Number of epochs for pretraining the gmm model")
+flags.DEFINE_integer("pretrain_epochs_dmvae", 200,
+                     "Number of epochs for pretraining the dmvae model")
 
 flags.DEFINE_boolean("plotting", True,
                      "Whether to generate sampling and regeneration plots")
@@ -62,6 +64,7 @@ def main(argv):
     n_epochs = FLAGS.n_epochs
     pretrain_epochs_vae = FLAGS.pretrain_epochs_vae
     pretrain_epochs_gmm = FLAGS.pretrain_epochs_gmm
+    pretrain_epochs_dmvae = FLAGS.pretrain_epochs_dmvae
 
     if dataset == "mnist":
         n_clusters = 10
@@ -137,11 +140,11 @@ def main(argv):
                 model_str, input_type, input_dim, latent_dim, n_classes,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph(
-                # {"Z": [512, 256, 256], "C": [512, 256, 256]}, [256, 256, 512]
-                {
-                    "Z": [2000, 500, 500],
-                    "C": [2000, 500, 500]
-                }, [500, 500, 2000]
+                {"Z": [512, 256, 256], "C": [512, 256, 256]}, [256, 256, 512]
+                # {
+                #     "Z": [2000, 500, 500],
+                #     "C": [2000, 500, 500]
+                # }, [500, 500, 2000]
             )
         elif model_str == "vade":
             model = vae_models.VaDE(
@@ -174,16 +177,25 @@ def main(argv):
             sess, train_data, pretrain_epochs_vae
         )
     elif model_str in ["vade", "dmvae"]:
-        model.pretrain(
-            sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
-        )
+        if model_str == "dmvae":
+            model.pretrain(
+                sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm, pretrain_epochs_dmvae
+            )
+        else:
+            model.pretrain(
+                sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
+            )
 
-    with tqdm(range(n_epochs), postfix={"loss": "inf"}) as bar:
+    with tqdm(range(n_epochs), postfix={"loss": "inf", "accy": "0.00%"}) as bar:
+        accuracy = 0.0
+
         for epoch in bar:
             # if plotting and epoch % plot_epochs == 0 and epoch != 0:
             if plotting and epoch % plot_epochs == 0:
                 sample_plot(model, sess)
                 regeneration_plot(model, test_data, sess)
+
+                accuracy = model.get_accuracy(sess, train_data)
 
             if moe:
                 bar.set_postfix({
@@ -191,12 +203,10 @@ def main(argv):
                     "lsqe": "%.4f" % model.square_error(sess, test_data)
                 })
             else:
-                bar.set_postfix(
-                    {"loss": "%.4f" % model.train_op(sess, train_data)}
-                )
-
-            if epoch % 10 == 0:
-                model.get_accuracy(sess, train_data)
+                bar.set_postfix({
+                    "loss": "%.4f" % model.train_op(sess, train_data),
+                    "accy": "%.2f%%" % accuracy
+                })
 
     if plotting:
         sample_plot(model, sess)

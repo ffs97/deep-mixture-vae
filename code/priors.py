@@ -48,7 +48,7 @@ class NormalFactorial(LatentVariable):
 
 
 class NormalMixtureFactorial(LatentVariable):
-    def __init__(self, name, dim, n_classes):
+    def __init__(self, name, dim, n_classes, trainable=True):
         self.name = name
 
         self.dim = dim
@@ -57,11 +57,11 @@ class NormalMixtureFactorial(LatentVariable):
         with tf.variable_scope(self.name) as _:
             self.means = tf.get_variable(
                 "means", shape=(self.n_classes, self.dim), dtype=tf.float32,
-                initializer=tf.initializers.random_normal
+                initializer=tf.initializers.random_normal, trainable=trainable
             )
             self.log_vars = tf.get_variable(
                 "log_vars", shape=(self.n_classes, self.dim), dtype=tf.float32,
-                initializer=tf.initializers.zeros
+                initializer=tf.initializers.zeros, trainable=trainable
             )
 
     def sample_reparametrization_variable(self, n):

@@ -36,6 +36,8 @@ def mnist_regeneration_plot(model, data, sess):
     orig_X = data.data[:100]
 
     feed = model.sample_reparametrization_variables(len(orig_X))
+    for var in feed:
+        feed[var] = np.zeros(feed[var].shape)
     feed.update({
         model.X: orig_X,
     })
@@ -139,7 +141,7 @@ def spiral_regeneration_plot(model, data, sess):
 
     feed = model.sample_reparametrization_variables(len(orig_X))
     feed.update({
-        model.X: orig_X,
+        model.X: orig_X
     })
 
     recn_X = sess.run(model.reconstructed_X, feed_dict=feed)
