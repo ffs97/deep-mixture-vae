@@ -4,9 +4,9 @@ import tensorflow as tf
 
 
 class FeedForwardNetwork:
-    def __init__(self, name, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, weight_decay_coeff=0.5):
+    def __init__(self, name, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, dropout=0.0):
         self.name = name
-        self.weight_decay_coeff = weight_decay_coeff
+        self.keep_prob = 1 - dropout
 
         self.activation = activation
         self.initializer = initializer
@@ -45,15 +45,15 @@ class FeedForwardNetwork:
 
         return self.outputs
 
-    def get_weight_decay_loss(self):
-        params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+    # def get_weight_decay_loss(self):
+    #     params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 
-        r1 = self.name + "\/.*\/kernel"
-        r2 = self.name + "\/.*\/gamma"
+    #     r1 = self.name + "\/.*\/kernel"
+    #     r2 = self.name + "\/.*\/gamma"
 
-        l2_norm_loss = 0
-        for p in params:
-            if re.search(r1, p.name) or re.search(r2, p.name):
-                l2_norm_loss += tf.nn.l2_loss(p)
+    #     l2_norm_loss = 0
+    #     for p in params:
+    #         if re.search(r1, p.name) or re.search(r2, p.name):
+    #             l2_norm_loss += tf.nn.l2_loss(p)
 
-        return self.weight_decay_coeff * l2_norm_loss
+    #     return self.weight_decay_coeff * l2_norm_loss

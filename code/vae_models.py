@@ -133,14 +133,18 @@ class DiscreteMixtureVAE(VAE):
             self.cluster = tf.placeholder(
                 tf.float32, shape=(None, 1, self.n_classes), name="epsilon_C"
             )
-            self.temperature = tf.placeholder_with_default(
-                0.2, shape=None, name="temperature"
+            self.dropout_c = tf.placeholder_with_default(
+                0.0, shape=None, name="dropout_C"
+            )
+            self.dropout_z = tf.placeholder_with_default(
+                0.0, shape=None, name="dropout_X"
             )
 
             self.latent_variables = dict()
 
             self.c_encoder_network = FeedForwardNetwork(
-                name="c/encoder_network"
+                name="c/encoder_network",
+                dropout=self.dropout_c
             )
             self.logits = self.c_encoder_network.build(
                 [("logits", self.n_classes)],
@@ -154,17 +158,13 @@ class DiscreteMixtureVAE(VAE):
                     priors.DiscreteFactorial(
                         "cluster", 1, self.n_classes
                     ), self.cluster,
-                    {
-                        "logits": self.logits,
-                        "temperature": self.temperature
-                    }
+                    {"logits": self.logits}
                 )
             })
-            lv, eps, params = self.latent_variables["C"]
-            self.C = lv.inverse_reparametrize(eps, params)
 
             self.z_encoder_network = FeedForwardNetwork(
-                name="z/encoder_network"
+                name="z/encoder_network",
+                dropout=self.dropout_z
             )
             self.mean, self.log_var = self.z_encoder_network.build(
                 [("mean", self.latent_dim),
@@ -180,8 +180,6 @@ class DiscreteMixtureVAE(VAE):
                     {
                         "mean": self.mean,
                         "log_var": self.log_var,
-                        # "weights": self.C,
-                        # "cluster_sample": True
                         "weights": self.cluster_weights,
                         "cluster_sample": False
                     }
@@ -205,10 +203,15 @@ class DiscreteMixtureVAE(VAE):
 
         return self
 
+    def define_train_loss(self):
+        self.define_latent_loss()
+        self.define_recon_loss()
+
+        self.loss = tf.reduce_mean(0.2 * self.recon_loss + self.latent_loss)
+
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9, use_ae=True):
         self.define_train_loss()
 
-        # VAE Pretraining
         vae_learning_rate = tf.train.exponential_decay(
             learning_rate=init_lr,
             global_step=0,
@@ -229,7 +232,12 @@ class DiscreteMixtureVAE(VAE):
             learning_rate=vae_learning_rate
         ).minimize(vae_pretrain_loss)
 
-        # GMM Pretraining
+        gmm_var_list = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/c/encoder_network"
+        ) + tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
+        )
+
         gmm_learning_rate = tf.train.exponential_decay(
             learning_rate=init_lr,
             global_step=0,
@@ -237,35 +245,9 @@ class DiscreteMixtureVAE(VAE):
             decay_rate=decay_rate
         )
 
-        self.cluster_labels = tf.placeholder(
-            tf.int32, shape=(None, self.n_classes), name="cluster_labels"
-        )
-        gmm_pretrain_loss = tf.nn.softmax_cross_entropy_with_logits_v2(
-            labels=self.cluster_labels,
-            logits=self.logits
-        )
-        gmm_pretrain_loss = tf.reduce_mean(gmm_pretrain_loss)
         self.gmm_pretrain_step = tf.train.AdamOptimizer(
             learning_rate=gmm_learning_rate
-        ).minimize(gmm_pretrain_loss)
-
-        # VAE-GMM Consistency Training
-        vae_learning_rate = tf.train.exponential_decay(
-            learning_rate=init_lr,
-            global_step=0,
-            decay_steps=decay_steps,
-            decay_rate=decay_rate
-        )
-
-        gmm_fixed_var_list = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/z/encoder_network"
-        ) + tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/decoder_network"
-        )
-        vae_train_loss = tf.reduce_mean(self.recon_loss + 2 * self.latent_loss)
-        self.vae_train_step = tf.train.AdamOptimizer(
-            learning_rate=vae_learning_rate
-        ).minimize(vae_train_loss, var_list=gmm_fixed_var_list)
+        ).minimize(self.latent_loss, var_list=gmm_var_list)
 
     def pretrain_vae(self, session, data, n_epochs_vae, use_ae=True):
         vae_var_list = tf.get_collection(
@@ -323,108 +305,31 @@ class DiscreteMixtureVAE(VAE):
             tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
         )
         gmm_saver = tf.train.Saver(gmm_var_list)
-        gmm_ckpt_path = "saved_models/%s/gmm/weights.ckpt" % self.name
+        gmm_ckpt_path = "saved_models/%s/prior/weights.ckpt" % self.name
 
         try:
             gmm_saver.restore(session, gmm_ckpt_path)
         except:
-            print("Could not load pretrained gmm parameters")
-            if n_epochs_gmm > 0:
-                size = len(data.data)
+            print("Could not load pretrained gmm prior")
 
-                feed = {
-                    self.X: data.data
-                }
-                Z = session.run(self.mean, feed_dict=feed)
-
-                gmm_model = GaussianMixture(
-                    n_components=self.n_classes,
-                    covariance_type="diag",
-                    max_iter=n_epochs_gmm,
-                    n_init=5,
-                    weights_init=np.ones(self.n_classes) / self.n_classes,
-                )
-                labels = gmm_model.fit_predict(Z)
-
-                lv = self.latent_variables["Z"][0]
-
-                init_gmm_means = tf.assign(lv.means, gmm_model.means_)
-                init_gmm_vars = tf.assign(
-                    lv.log_vars, np.log(gmm_model.covariances_ + 1e-10)
-                )
-
-                session.run([init_gmm_means, init_gmm_vars])
-                gmm_saver.save(session, gmm_ckpt_path)
-
-                labels_one_hot = np.zeros((size, self.n_classes))
-                labels_one_hot[np.arange(size), labels] = 1
-
-                max_accuracy = 0
-                with tqdm(range(n_epochs_gmm)) as bar:
-                    for _ in bar:
-                        feed = {
-                            self.X: data.data,
-                            self.cluster_labels: labels_one_hot
-                        }
-                        weights, _ = session.run([
-                            self.cluster_weights, self.gmm_pretrain_step
-                        ], feed_dict=feed)
-
-                        accuracy = np.sum(
-                            np.argmax(weights, axis=1) == labels) / len(labels) * 100
-
-                        bar.set_postfix({"acc": "%.2f%%" % accuracy})
-
-                        if accuracy >= max_accuracy:
-                            max_accuracy = accuracy
-                            gmm_saver.save(session, gmm_ckpt_path)
-
-    def pretrain_dmvae(self, session, data, n_epochs_dmvae):
-        self.get_accuracy(session, data)
-
-        dmvae_var_list = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/z/encoder_network"
-        ) + tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/decoder_network"
-        ) + tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/c/encoder_network"
-        ) + tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
-        )
-
-        dmvae_saver = tf.train.Saver(dmvae_var_list)
-
-        dmvae_ckpt_path = "saved_models/%s/dmvae/weights.ckpt" % self.name
-
-        try:
-            dmvae_saver.restore(session, dmvae_ckpt_path)
-        except:
-            print("Could not load pretrained dmvae model")
-
-        min_loss = float("inf")
-        with tqdm(range(n_epochs_dmvae)) as bar:
+        with tqdm(range(n_epochs_gmm)) as bar:
+            min_loss = float("inf")
             for _ in bar:
                 loss = 0
                 for batch in data.get_batches():
                     feed = {
                         self.X: batch
                     }
-                    feed.update(
-                        self.sample_reparametrization_variables(
-                            len(batch), variables=["Z"]
-                        )
-                    )
-
-                    batch_loss, _ = session.run(
-                        [self.loss, self.vae_train_step], feed_dict=feed
-                    )
+                    batch_loss, _ = session.run([
+                        self.latent_loss, self.gmm_pretrain_step
+                    ], feed_dict=feed)
                     loss += batch_loss / data.epoch_len
 
                 bar.set_postfix({"loss": "%.4f" % loss})
 
                 if loss <= min_loss:
                     min_loss = loss
-                    dmvae_saver.save(session, dmvae_ckpt_path)
+                    gmm_saver.save(session, gmm_ckpt_path)
 
     def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm, n_epochs_dmvae, use_ae=True):
         assert(
@@ -432,12 +337,18 @@ class DiscreteMixtureVAE(VAE):
             self.gmm_pretrain_step is not None
         )
 
+        if not os.path.exists("saved_models/" + self.name):
+            os.makedirs("saved_models/" + self.name)
+
         self.pretrain_vae(session, data, n_epochs_vae, use_ae)
-        # self.pretrain_gmm(session, data, n_epochs_gmm)
-        # self.pretrain_dmvae(session, data, n_epochs_dmvae)
+        self.pretrain_gmm(session, data, n_epochs_gmm)
 
     def get_accuracy(self, session, data):
-        logits = session.run(self.logits, feed_dict={self.X: data.data})
+        logits = session.run(self.logits, feed_dict={
+            self.X: data.data,
+            self.dropout_c: 0.0,
+            self.dropout_z: 0.0
+        })
 
         clusters = np.argmax(logits, axis=-1)[:, None]
         classes = data.classes[:, None]

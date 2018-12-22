@@ -140,10 +140,10 @@ def main(argv):
                 model_str, input_type, input_dim, latent_dim, n_classes,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph(
-                {"Z": [512, 256, 256], "C": [512, 256, 256]}, [256, 256, 512]
+                {"Z": [512, 256], "C": [512, 256]}, [256, 512]
                 # {
                 #     "Z": [2000, 500, 500],
-                #     "C": [2000, 500, 500]
+                #     "C": [512, 256, 256]
                 # }, [500, 500, 2000]
             )
         elif model_str == "vade":
@@ -164,7 +164,7 @@ def main(argv):
     train_data = Dataset(train_data, batch_size=100)
     test_data = Dataset(test_data, batch_size=100)
 
-    model.define_train_step(0.002, train_data.epoch_len * 10)
+    model.define_train_step(0.0005, train_data.epoch_len * 10)
 
     if model_str in ["dmvae", "vade", "dvmoe", "vademoe"]:
         model.define_pretrain_step(0.002, train_data.epoch_len * 10)
@@ -187,7 +187,17 @@ def main(argv):
             )
 
     with tqdm(range(n_epochs), postfix={"loss": "inf", "accy": "0.00%"}) as bar:
+        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+        saver = tf.train.Saver(var_list)
+        ckpt_path = "saved_models/%s/model/parameters.ckpt" % model.name
+
+        try:
+            saver.restore(sess, ckpt_path)
+        except:
+            print("Could not load trained model")
+
         accuracy = 0.0
+        max_accuracy = 0.0
 
         for epoch in bar:
             # if plotting and epoch % plot_epochs == 0 and epoch != 0:
@@ -196,6 +206,9 @@ def main(argv):
                 regeneration_plot(model, test_data, sess)
 
                 accuracy = model.get_accuracy(sess, train_data)
+                if accuracy > max_accuracy:
+                    max_accuracy = accuracy
+                    saver.save(sess, ckpt_path)
 
             if moe:
                 bar.set_postfix({
