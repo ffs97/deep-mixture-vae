@@ -353,8 +353,6 @@ class DiscreteMixtureVAE(VAE):
         clusters = np.argmax(logits, axis=-1)[:, None]
         classes = data.classes[:, None]
 
-        np.save("comp.npy", np.concatenate([classes, clusters], axis=1))
-
         size = len(clusters)
         d = np.zeros((10, 10), dtype=np.int32)
 
@@ -572,4 +570,11 @@ class VaDE(VAE):
         clusters = np.argmax(weights, axis=-1)[:, None]
         classes = data.classes[:, None]
 
-        np.save("comp.npy", np.concatenate([classes, clusters], axis=1))
+        size = len(clusters)
+        d = np.zeros((10, 10), dtype=np.int32)
+
+        for i in range(size):
+            d[clusters[i], classes[i]] += 1
+
+        ind = linear_assignment(d.max() - d)
+        return sum([d[i, j] for i, j in ind]) / size * 100
