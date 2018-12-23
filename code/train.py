@@ -1,14 +1,12 @@
 import os
 import models
+import argparse
 import base_models
 import numpy as np
 import tensorflow as tf
 import matplotlib as mpl
 
 from tqdm import tqdm
-
-from absl import app
-from absl import flags
 
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as grid
@@ -20,64 +18,69 @@ mpl.rc_file_defaults()
 
 tf.logging.set_verbosity(tf.logging.ERROR)
 
+parser = argparse.ArgumentParser(
+    description="Training file for DMVAE and DVMOE"
+)
 
-FLAGS = flags.FLAGS
 
-flags.DEFINE_string("model", "vademoe",
-                    "Model to use [dmvae, vade, dmoe, dvmoe, vademoe]")
-flags.DEFINE_string("model_name", "",
-                    "Name of the model")
-flags.DEFINE_string("dataset", "mnist",
-                    "Dataset to use [mnist, spiral, cifar10]")
+parser.add_argument("--model", type=str, default="dmvae",
+                    help="Model to use [dmvae, vade, dmoe, dvmoe, vademoe]")
+parser.add_argument("--model_name", type=str, default="",
+                    help="Name of the model")
+parser.add_argument("--dataset", type=str, default="mnist",
+                    help="Dataset to use [mnist, spiral, cifar10]")
 
-flags.DEFINE_integer("latent_dim", 10,
-                     "Number of dimensions for latent variable Z")
-flags.DEFINE_integer("output_dim", 1,
-                     "Output dimension for regression variable for ME models")
-flags.DEFINE_integer("n_classes", -1,
-                     "Number of clusters or classes to use for ME models")
+parser.add_argument("--latent_dim", type=int, default=10,
+                    help="Number of dimensions for latent variable Z")
+parser.add_argument("--output_dim", type=int, default=1,
+                    help="Output dimension for regression variable for ME models")
+parser.add_argument("--n_classes", type=int, default=-1,
+                    help="Number of clusters or classes to use for ME models")
 
-flags.DEFINE_boolean("classification", False,
-                     "Whether the objective is classification or regression (ME models)")
+parser.add_argument("--classification", action="store_true", default=False,
+                    help="Whether the objective is classification or regression (ME models)")
 
-flags.DEFINE_integer("n_epochs", 500,
-                     "Number of epochs for training the model")
-flags.DEFINE_integer("pretrain_epochs_vae", 200,
-                     "Number of epochs for pretraining the vae model")
-flags.DEFINE_integer("pretrain_epochs_gmm", 200,
-                     "Number of epochs for pretraining the gmm model")
+parser.add_argument("--n_epochs", type=int, default=500,
+                    help="Number of epochs for training the model")
+parser.add_argument("--pretrain_epochs_vae", type=int, default=200,
+                    help="Number of epochs for pretraining the vae model")
+parser.add_argument("--pretrain_epochs_gmm", type=int, default=200,
+                    help="Number of epochs for pretraining the gmm model")
 
-flags.DEFINE_boolean("plotting", True,
-                     "Whether to generate sampling and regeneration plots")
-flags.DEFINE_integer("plot_epochs", 100,
-                     "Nummber of epochs before generating plots")
+parser.add_argument("--plotting", action="store_true", default=False,
+                    help="Whether to generate sampling and regeneration plots")
+parser.add_argument("--plot_epochs", type=int, default=100,
+                    help="Nummber of epochs before generating plots")
 
-flags.DEFINE_integer("save_epochs", 10,
-                     "Nummber of epochs before saving model")
+parser.add_argument("--save_epochs", type=int, default=10,
+                    help="Nummber of epochs before saving model")
+
+args = parser.parse_args()
+print(args)
 
 
 def main(argv):
-    dataset = FLAGS.dataset
-    latent_dim = FLAGS.latent_dim
-    output_dim = FLAGS.output_dim
+    dataset = argv.dataset
+    latent_dim = argv.latent_dim
+    output_dim = argv.output_dim
 
-    n_classes = FLAGS.n_classes
+    n_classes = argv.n_classes
 
-    model_str = FLAGS.model
-    model_name = FLAGS.model_name
+    model_str = argv.model
+    model_name = argv.model_name
 
-    plotting = FLAGS.plotting
-    plot_epochs = FLAGS.plot_epochs
+    plotting = argv.plotting
+    plot_epochs = argv.plot_epochs
 
-    save_epochs = FLAGS.save_epochs
+    save_epochs = argv.save_epochs
 
-    classification = FLAGS.classification
+    classification = argv.classification
 
     moe = model_str[-3:] == "moe"
 
-    n_epochs = FLAGS.n_epochs
-    pretrain_epochs_vae = FLAGS.pretrain_epochs_vae
-    pretrain_epochs_gmm = FLAGS.pretrain_epochs_gmm
+    n_epochs = argv.n_epochs
+    pretrain_epochs_vae = argv.pretrain_epochs_vae
+    pretrain_epochs_gmm = argv.pretrain_epochs_gmm
 
     dataset = load_data(
         dataset, classification=classification, output_dim=output_dim
@@ -87,8 +90,8 @@ def main(argv):
         model_name = model_str
 
     n_classes = dataset.n_classes
-    if FLAGS.n_classes > 0:
-        n_classes = FLAGS.n_classes
+    if argv.n_classes > 0:
+        n_classes = argv.n_classes
 
     if moe:
         n_experts = n_classes
@@ -238,4 +241,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    app.run(main)
+    main(args)
