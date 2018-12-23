@@ -578,3 +578,124 @@ class VaDE(VAE):
 
         ind = linear_assignment(d.max() - d)
         return sum([d[i, j] for i, j in ind]) / size * 100
+
+class IMSAT:
+    def __init__(self, name, input_type, input_dim, n_classes, mu=4, lam=0.2, activation=None, initializer=None):
+        self.name = name
+        self.input_dim = input_dim
+        self.input_type = input_type
+        self.n_classes = n_classes
+        self.mu = mu
+        self.lam = lam
+
+        self.activation = activation
+        self.initializer = initializer
+
+        self.X = None
+        self.train_step = None
+
+    def build_graph(self, layer_sizes):
+        with tf.variable_scope(self.name) as _:
+            self.X = tf.placeholder(
+                tf.float32, shape=(None, self.input_dim), name="X"
+            )
+            self.network = FeedForwardNetwork(name="x/network")
+            self.layer_sizes = layer_sizes
+            self.logits = self.network.build(
+                [("cluster_logits", self.n_classes)],
+                layer_sizes, self.X
+            )
+            self.cluster_weights = tf.nn.softmax(self.logits)
+
+        return self
+
+    def define_train_step(self, init_lr, decay_steps, decay_rate=0.9):
+        learning_rate = tf.train.exponential_decay(
+            learning_rate=init_lr,
+            global_step=0,
+            decay_steps=decay_steps,
+            decay_rate=decay_rate
+        )
+
+        self.define_train_loss()
+        self.train_step = tf.train.AdamOptimizer(
+            learning_rate=learning_rate
+        ).minimize(self.loss)
+
+
+    def define_train_loss(self):
+        mean_probs = tf.reduce_mean(self.cluster_weights, axis=0)
+        H_Y = -tf.reduce_sum(mean_probs * tf.log(mean_probs + 1e-16))
+        H_Y_X = tf.reduce_mean(self.entropy(self.cluster_weights))
+
+        self.entropy_loss = H_Y_X - self.mu * H_Y
+
+        # with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+        ul_logits = self.network.build(
+            [("cluster_logits", self.n_classes)],
+            self.layer_sizes, self.X
+        )
+        self.adversary_loss = self.virtual_adversarial_loss(ul_logits)
+
+        self.loss = self.adversary_loss + self.lam * self.entropy_loss
+
+    def compute_kld(self, p_logit, q_logit):
+        p = tf.nn.softmax(p_logit)
+        q = tf.nn.softmax(q_logit)
+        return tf.reduce_sum(p * (tf.log(p + 1e-16) - tf.log(q + 1e-16)), axis=1)
+
+    def entropy(self, p):
+        return -tf.reduce_sum(p * tf.log(p + 1e-16), axis=1)
+
+    def virtual_adversarial_loss(self, logits, xi=10, Ip=1):
+        d = tf.random_normal(shape=tf.shape(self.X))
+        d /= (tf.reshape(tf.sqrt(tf.reduce_sum(tf.pow(d, 2.0), axis=1)), [-1, 1]) + 1e-16)
+        for _ in range(Ip):
+            y1 = logits
+            y2 = self.network.build(
+                [("cluster_logits", self.n_classes)],
+                self.layer_sizes, self.X + xi * d, reuse=True
+            )
+            kl_loss = tf.reduce_mean(self.compute_kld(y1, y2))
+            grad = tf.gradients(kl_loss, [d])[0]
+            d = tf.stop_gradient(grad)
+            d /= (tf.reshape(tf.sqrt(tf.reduce_sum(tf.pow(d, 2.0), axis=1)), [-1, 1]) + 1e-16)
+
+        logits = tf.stop_gradient(logits)
+        y1 = logits
+        y2 = self.network.build(
+            [("cluster_logits", self.n_classes)],
+            self.layer_sizes, self.X + d, reuse=True
+        )
+        return tf.reduce_mean(self.compute_kld(y1, y2))
+
+    def train_op(self, session, data):
+        assert self.train_step is not None
+        loss = 0.0
+        for batch in data.get_batches():
+            feed = {
+                self.X: batch
+            }
+            batch_loss, el, al, _ = session.run(
+                [self.loss, self.entropy_loss, self.adversary_loss, self.train_step],
+                feed_dict=feed
+            )
+            loss += batch_loss / data.epoch_len
+        return loss
+
+    def get_accuracy(self, session, data):
+        logits = session.run(self.logits, feed_dict={
+            self.X: data.data,
+        })
+
+        clusters = np.argmax(logits, axis=-1)[:, None]
+        classes = data.classes[:, None]
+
+        size = len(clusters)
+        d = np.zeros((10, 10), dtype=np.int32)
+
+        for i in range(size):
+            d[clusters[i], classes[i]] += 1
+
+        ind = linear_assignment(d.max() - d)
+        return sum([d[i, j] for i, j in ind]) / size * 100

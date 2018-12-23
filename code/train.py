@@ -24,7 +24,7 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("model", "vademoe",
-                    "Model to use [dmvae, vade, dmoe, dvmoe, vademoe]")
+                    "Model to use [imsat, dmvae, vade, dmoe, dvmoe, vademoe]")
 flags.DEFINE_string("dataset", "mnist",
                     "Dataset to use [mnist, spiral]")
 
@@ -105,7 +105,6 @@ def main(argv):
             model.build_graph(
                 [512, 256]
             )
-
             plotting = False
 
         elif model_str == "dvmoe":
@@ -132,7 +131,7 @@ def main(argv):
     else:
         from includes.utils import Dataset
 
-        if model_str not in ["dmvae", "vade"]:
+        if model_str not in ["imsat", "dmvae", "vade"]:
             raise NotImplementedError
 
         if model_str == "dmvae":
@@ -141,10 +140,6 @@ def main(argv):
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph(
                 {"Z": [512, 256], "C": [512, 256]}, [256, 512]
-                # {
-                #     "Z": [2000, 500, 500],
-                #     "C": [512, 256, 256]
-                # }, [500, 500, 2000]
             )
         elif model_str == "vade":
             model = vae_models.VaDE(
@@ -153,6 +148,13 @@ def main(argv):
             ).build_graph(
                 {"Z": [512, 256, 256]}, [256, 256, 512]
             )
+        elif model_str == "imsat":
+            model = vae_models.IMSAT(
+                model_str, input_type, input_dim, n_classes,
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+            ).build_graph([1200, 1200])
+            plotting = False
+
 
         (train_data, train_classes), (test_data, test_classes) = load_data(dataset)
         train_data = (
@@ -181,7 +183,7 @@ def main(argv):
             model.pretrain(
                 sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm, pretrain_epochs_dmvae
             )
-        else:
+        elif model_str == "vade":
             model.pretrain(
                 sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
             )
@@ -201,9 +203,10 @@ def main(argv):
 
         for epoch in bar:
             # if plotting and epoch % plot_epochs == 0 and epoch != 0:
-            if plotting and epoch % plot_epochs == 0:
-                sample_plot(model, sess)
-                regeneration_plot(model, test_data, sess)
+            if epoch % plot_epochs == 0:
+                if plotting:
+                    sample_plot(model, sess)
+                    regeneration_plot(model, test_data, sess)
 
                 accuracy = model.get_accuracy(sess, train_data)
                 if accuracy > max_accuracy:
@@ -224,7 +227,6 @@ def main(argv):
     if plotting:
         sample_plot(model, sess)
         regeneration_plot(model, test_data, sess)
-
 
 if __name__ == "__main__":
     app.run(main)
