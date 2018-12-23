@@ -5,12 +5,8 @@ import tensorflow as tf
 
 from tqdm import tqdm
 from sklearn.mixture import GaussianMixture
-from sklearn.utils.linear_assignment_ import linear_assignment
 
-from includes.visualization import mnist_sample_plot as sample_plot
-from includes.visualization import mnist_regeneration_plot as regeneration_plot
-
-from includes.utils import Dataset
+from includes.utils import Dataset, get_clustering_accuracy
 from includes.network import FeedForwardNetwork
 
 
@@ -25,6 +21,8 @@ class VAE:
 
         self.activation = activation
         self.initializer = initializer
+
+        self.path = ""
 
         self.X = None
         self.decoded_X = None
@@ -115,7 +113,7 @@ class VAE:
         return loss
 
 
-class DiscreteMixtureVAE(VAE):
+class DeepMixtureVAE(VAE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
                      activation=activation, initializer=initializer)
@@ -144,6 +142,8 @@ class DiscreteMixtureVAE(VAE):
 
             self.c_encoder_network = FeedForwardNetwork(
                 name="c/encoder_network",
+                activation=self.activation,
+                initializer=self.initializer,
                 dropout=self.dropout_c
             )
             self.logits = self.c_encoder_network.build(
@@ -164,6 +164,8 @@ class DiscreteMixtureVAE(VAE):
 
             self.z_encoder_network = FeedForwardNetwork(
                 name="z/encoder_network",
+                activation=self.activation,
+                initializer=self.initializer,
                 dropout=self.dropout_z
             )
             self.mean, self.log_var = self.z_encoder_network.build(
@@ -189,7 +191,11 @@ class DiscreteMixtureVAE(VAE):
             lv, eps, params = self.latent_variables["Z"]
             self.Z = lv.inverse_reparametrize(eps, params)
 
-            self.decoder_network = FeedForwardNetwork(name="decoder_network")
+            self.decoder_network = FeedForwardNetwork(
+                name="decoder_network",
+                activation=self.activation,
+                initializer=self.initializer
+            )
             self.decoded_X = self.decoder_network.build(
                 [("decoded_X", self.input_dim)], decoder_layer_sizes, self.Z
             )
@@ -202,12 +208,6 @@ class DiscreteMixtureVAE(VAE):
                 raise NotImplementedError
 
         return self
-
-    def define_train_loss(self):
-        self.define_latent_loss()
-        self.define_recon_loss()
-
-        self.loss = tf.reduce_mean(0.2 * self.recon_loss + self.latent_loss)
 
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9, use_ae=True):
         self.define_train_loss()
@@ -258,7 +258,7 @@ class DiscreteMixtureVAE(VAE):
 
         vae_saver = tf.train.Saver(vae_var_list)
 
-        vae_ckpt_path = "saved_models/%s/vae/weights.ckpt" % self.name
+        vae_ckpt_path = self.path + "/vae/weights.ckpt"
 
         try:
             vae_saver.restore(session, vae_ckpt_path)
@@ -305,7 +305,7 @@ class DiscreteMixtureVAE(VAE):
             tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
         )
         gmm_saver = tf.train.Saver(gmm_var_list)
-        gmm_ckpt_path = "saved_models/%s/prior/weights.ckpt" % self.name
+        gmm_ckpt_path = self.path + "/prior/weights.ckpt"
 
         try:
             gmm_saver.restore(session, gmm_ckpt_path)
@@ -331,36 +331,19 @@ class DiscreteMixtureVAE(VAE):
                     min_loss = loss
                     gmm_saver.save(session, gmm_ckpt_path)
 
-    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm, n_epochs_dmvae, use_ae=True):
+    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm, use_ae=True):
         assert(
             self.vae_pretrain_step is not None and
             self.gmm_pretrain_step is not None
         )
 
-        if not os.path.exists("saved_models/" + self.name):
-            os.makedirs("saved_models/" + self.name)
-
         self.pretrain_vae(session, data, n_epochs_vae, use_ae)
         self.pretrain_gmm(session, data, n_epochs_gmm)
 
     def get_accuracy(self, session, data):
-        logits = session.run(self.logits, feed_dict={
-            self.X: data.data,
-            self.dropout_c: 0.0,
-            self.dropout_z: 0.0
-        })
+        logits = session.run(self.logits, feed_dict={self.X: data.data})
 
-        clusters = np.argmax(logits, axis=-1)[:, None]
-        classes = data.classes[:, None]
-
-        size = len(clusters)
-        d = np.zeros((10, 10), dtype=np.int32)
-
-        for i in range(size):
-            d[clusters[i], classes[i]] += 1
-
-        ind = linear_assignment(d.max() - d)
-        return sum([d[i, j] for i, j in ind]) / size * 100
+        return get_clustering_accuracy(logits, data.classes)
 
 
 class VaDE(VAE):
@@ -382,7 +365,9 @@ class VaDE(VAE):
             self.latent_variables = dict()
 
             self.encoder_network = FeedForwardNetwork(
-                name="z/encoder_network"
+                name="z/encoder_network",
+                activation=self.activation,
+                initializer=self.initializer
             )
             self.mean, self.log_var = self.encoder_network.build(
                 [("mean", self.latent_dim),
@@ -409,7 +394,11 @@ class VaDE(VAE):
 
             params["weights"] = self.cluster_weights
 
-            self.decoder_network = FeedForwardNetwork(name="decoder_network")
+            self.decoder_network = FeedForwardNetwork(
+                name="decoder_network",
+                activation=self.activation,
+                initializer=self.initializer
+            )
             self.decoded_X = self.decoder_network.build(
                 [("decoded_X", self.input_dim)], decoder_layer_sizes, self.Z
             )
@@ -466,7 +455,7 @@ class VaDE(VAE):
 
         vae_saver = tf.train.Saver(vae_var_list)
 
-        vae_ckpt_path = "saved_models/%s/vae/weights.ckpt" % self.name
+        vae_ckpt_path = self.path + "/vae/weights.ckpt"
 
         try:
             vae_saver.restore(session, vae_ckpt_path)
@@ -511,7 +500,7 @@ class VaDE(VAE):
             tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
         )
         gmm_saver = tf.train.Saver(gmm_var_list)
-        gmm_ckpt_path = "saved_models/%s/gmm/weights.ckpt" % self.name
+        gmm_ckpt_path = self.path + "/gmm/weights.ckpt"
 
         try:
             gmm_saver.restore(session, gmm_ckpt_path)
@@ -545,9 +534,6 @@ class VaDE(VAE):
     def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm, use_ae=True):
         assert(self.vae_pretrain_step is not None)
 
-        if not os.path.exists("saved_models/" + self.name):
-            os.makedirs("saved_models/" + self.name)
-
         self.pretrain_vae(session, data, n_epochs_vae, use_ae)
         self.pretrain_gmm(session, data, n_epochs_gmm)
 
@@ -567,14 +553,4 @@ class VaDE(VAE):
         weights = np.array(weights)
         weights = np.mean(weights, axis=0)
 
-        clusters = np.argmax(weights, axis=-1)[:, None]
-        classes = data.classes[:, None]
-
-        size = len(clusters)
-        d = np.zeros((10, 10), dtype=np.int32)
-
-        for i in range(size):
-            d[clusters[i], classes[i]] += 1
-
-        ind = linear_assignment(d.max() - d)
-        return sum([d[i, j] for i, j in ind]) / size * 100
+        return get_clustering_accuracy(weights, data.classes)

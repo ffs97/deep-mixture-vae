@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from includes.utils import Dataset
 from includes.network import FeedForwardNetwork
-from vae_models import DiscreteMixtureVAE, VaDE
+from base_models import DeepMixtureVAE, VaDE
 
 
 class DeepMoE:
@@ -222,7 +222,7 @@ class DVMoE(MoE):
 
     def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
         with tf.variable_scope(self.name) as _:
-            self.vae = DiscreteMixtureVAE(
+            self.vae = DeepMixtureVAE(
                 "mixture_vae", self.input_type, self.input_dim, self.latent_dim,
                 self.n_classes, activation=self.activation, initializer=self.initializer
             )
