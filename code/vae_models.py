@@ -603,7 +603,7 @@ class IMSAT:
             self.layer_sizes = layer_sizes
             self.logits = self.network.build(
                 [("cluster_logits", self.n_classes)],
-                layer_sizes, self.X
+                layer_sizes, self.X, use_bn=True
             )
             self.cluster_weights = tf.nn.softmax(self.logits)
 
@@ -618,9 +618,12 @@ class IMSAT:
         )
 
         self.define_train_loss()
-        self.train_step = tf.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ).minimize(self.loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+
+        # for batchnorm
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            self.train_step = optimizer.minimize(self.loss)
 
 
     def define_train_loss(self):
@@ -633,7 +636,7 @@ class IMSAT:
         # with tf.variable_scope(tf.get_variable_scope(), reuse=True):
         ul_logits = self.network.build(
             [("cluster_logits", self.n_classes)],
-            self.layer_sizes, self.X
+            self.layer_sizes, self.X, use_bn=True
         )
         self.adversary_loss = self.virtual_adversarial_loss(ul_logits)
 
@@ -654,7 +657,7 @@ class IMSAT:
             y1 = logits
             y2 = self.network.build(
                 [("cluster_logits", self.n_classes)],
-                self.layer_sizes, self.X + xi * d, reuse=True
+                self.layer_sizes, self.X + xi * d, use_bn=True, reuse=True
             )
             kl_loss = tf.reduce_mean(self.compute_kld(y1, y2))
             grad = tf.gradients(kl_loss, [d])[0]
@@ -665,7 +668,7 @@ class IMSAT:
         y1 = logits
         y2 = self.network.build(
             [("cluster_logits", self.n_classes)],
-            self.layer_sizes, self.X + d, reuse=True
+            self.layer_sizes, self.X + d, use_bn=True, reuse=True
         )
         return tf.reduce_mean(self.compute_kld(y1, y2))
 
