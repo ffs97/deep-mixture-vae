@@ -155,6 +155,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         cifar10.data_path = dir
 
+        cifar10.maybe_download_and_extract()
+
         test_data, test_classes, _ = cifar10.load_test_data()
         train_data, train_classes, _ = cifar10.load_training_data()
 

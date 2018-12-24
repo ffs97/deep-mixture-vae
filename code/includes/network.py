@@ -1,6 +1,6 @@
-import re
-
 import tensorflow as tf
+
+from includes.layers import FullyConnected, Convolution, MaxPooling
 
 
 class FeedForwardNetwork:
@@ -45,15 +45,36 @@ class FeedForwardNetwork:
 
         return self.outputs
 
-    # def get_weight_decay_loss(self):
-    #     params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 
-    #     r1 = self.name + "\/.*\/kernel"
-    #     r2 = self.name + "\/.*\/gamma"
+class DeepNetwork:
+    def __init__(self, name, layers, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer):
+        self.name = name
 
-    #     l2_norm_loss = 0
-    #     for p in params:
-    #         if re.search(r1, p.name) or re.search(r2, p.name):
-    #             l2_norm_loss += tf.nn.l2_loss(p)
+        self.layers = []
+        with tf.variable_scope(self.name) as _:
+            for index, layer in enumerate(layers):
+                name = "layer_%d" % (index + 1)
 
-    #     return self.weight_decay_coeff * l2_norm_loss
+                if layer[0] == "fc":
+                    layer_ = FullyConnected
+                elif layer[0] == "cn":
+                    layer_ = Convolution
+                elif layer[0] == "mp":
+                    layer_ = MaxPooling
+                else:
+                    raise NotImplementedError
+
+                self.layers.append(
+                    layer_(
+                        name, **layer[1], activation=activation, initializer=initializer
+                    )
+                )
+
+    def __call__(self, inputs):
+        with tf.name_scope(self.name):
+            outputs = inputs
+
+            for layer in self.layers:
+                outputs = layer(outputs)
+
+            return outputs

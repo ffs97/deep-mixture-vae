@@ -149,12 +149,7 @@ def main(argv):
             model = base_models.DeepMixtureVAE(
                 model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph(
-                # {"Z": [512, 256, 256], "C": [512, 256]}, [256, 256, 512]
-                # {"Z": [512, 256, 256], "C": [512, 256]}, [256, 256, 512]
-                {"Z": [2000, 500, 500], "C": [
-                    2000, 500, 500]}, [500, 500, 2000]
-            )
+            ).build_graph()
         elif model_str == "vade":
             model = base_models.VaDE(
                 model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
@@ -176,10 +171,10 @@ def main(argv):
     test_data = Dataset(test_data, batch_size=100)
     train_data = Dataset(train_data, batch_size=100)
 
-    model.define_train_step(0.002, train_data.epoch_len * 10)
+    model.define_train_step(0.002, train_data.epoch_len * 25)
 
     if model_str in ["dmvae", "vade", "dvmoe", "vademoe"]:
-        model.define_pretrain_step(0.005, train_data.epoch_len * 10)
+        model.define_pretrain_step(0.002, train_data.epoch_len * 10)
 
     model.path = "saved_models/%s/%s" % (dataset.datagroup, model.name)
     for path in [model.path + "/" + x for x in ["model", "vae", "prior"]]:
