@@ -173,7 +173,7 @@ def main(argv):
 
     model.define_train_step(0.002, train_data.epoch_len * 25)
 
-    if model_str in ["dmvae", "vade", "dvmoe", "vademoe"]:
+    if model_str in ["vade", "dvmoe", "vademoe"]:
         model.define_pretrain_step(0.002, train_data.epoch_len * 10)
 
     model.path = "saved_models/%s/%s" % (dataset.datagroup, model.name)
@@ -188,7 +188,7 @@ def main(argv):
         model.pretrain(
             sess, train_data, pretrain_epochs_vae
         )
-    elif model_str in ["vade", "dmvae"]:
+    elif model_str in ["vade"]:
         model.pretrain(
             sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
         )

@@ -220,8 +220,8 @@ class DeepMixtureVAE(VAE):
                 decoder_network = DeepNetwork(
                     "layers",
                     [
-                        ("fc", {"input_dim": 10, "output_dim": 128})
-                        ("fc", {"input_dim": 128, "output_dim": 256})
+                        ("fc", {"input_dim": 10, "output_dim": 128}),
+                        ("fc", {"input_dim": 128, "output_dim": 256}),
                         ("fc", {"input_dim": 256, "output_dim": 512})
                     ],
                     activation=self.activation,

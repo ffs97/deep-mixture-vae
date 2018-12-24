@@ -31,6 +31,8 @@ class FullyConnected(Layer):
         outputs = tf.layers.flatten(inputs)
         outputs = tf.matmul(outputs, self.W) + self.b
 
+        outputs = self.activation(outputs)
+
         return outputs
 
 
@@ -41,7 +43,7 @@ class Convolution(Layer):
 
         self.strides = [1, strides, strides, 1]
 
-        weights_shape = list(kernel) + list((prev_n_kernels,)) + list((n_kernels,))
+        weights_shape = list(kernel) + [prev_n_kernels] + [n_kernels]
 
         with tf.variable_scope(self.name):
             self.W = tf.get_variable("weight", shape=weights_shape,
