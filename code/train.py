@@ -166,7 +166,7 @@ def main(argv):
     train_data = Dataset(train_data, batch_size=100)
     test_data = Dataset(test_data, batch_size=100)
 
-    model.define_train_step(0.0005, train_data.epoch_len * 10)
+    model.define_train_step(0.01, train_data.epoch_len * 10)
 
     if model_str in ["dmvae", "vade", "dvmoe", "vademoe"]:
         model.define_pretrain_step(0.002, train_data.epoch_len * 10)
@@ -201,6 +201,7 @@ def main(argv):
         accuracy = 0.0
         max_accuracy = 0.0
 
+        plot_epochs = 1
         for epoch in bar:
             # if plotting and epoch % plot_epochs == 0 and epoch != 0:
             if epoch % plot_epochs == 0:

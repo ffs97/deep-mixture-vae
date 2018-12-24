@@ -11,7 +11,7 @@ from includes.visualization import mnist_sample_plot as sample_plot
 from includes.visualization import mnist_regeneration_plot as regeneration_plot
 
 from includes.utils import Dataset
-from includes.network import FeedForwardNetwork
+from includes.network import *
 
 
 class VAE:
@@ -599,11 +599,12 @@ class IMSAT:
             self.X = tf.placeholder(
                 tf.float32, shape=(None, self.input_dim), name="X"
             )
-            self.network = FeedForwardNetwork(name="x/network")
+            self.is_training = tf.placeholder(tf.bool)
+            self.network = FeedForwardNetworkWithBN(name="x/network")
             self.layer_sizes = layer_sizes
             self.logits = self.network.build(
                 [("cluster_logits", self.n_classes)],
-                layer_sizes, self.X, use_bn=True
+                layer_sizes, self.X, is_training=self.is_training
             )
             self.cluster_weights = tf.nn.softmax(self.logits)
 
@@ -618,11 +619,11 @@ class IMSAT:
         )
 
         self.define_train_loss()
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
         # for batchnorm
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
             self.train_step = optimizer.minimize(self.loss)
 
 
@@ -636,7 +637,7 @@ class IMSAT:
         # with tf.variable_scope(tf.get_variable_scope(), reuse=True):
         ul_logits = self.network.build(
             [("cluster_logits", self.n_classes)],
-            self.layer_sizes, self.X, use_bn=True
+            self.layer_sizes, self.X, is_training=self.is_training
         )
         self.adversary_loss = self.virtual_adversarial_loss(ul_logits)
 
@@ -657,18 +658,17 @@ class IMSAT:
             y1 = logits
             y2 = self.network.build(
                 [("cluster_logits", self.n_classes)],
-                self.layer_sizes, self.X + xi * d, use_bn=True, reuse=True
+                self.layer_sizes, self.X + xi * d, is_training=self.is_training, reuse=True
             )
             kl_loss = tf.reduce_mean(self.compute_kld(y1, y2))
             grad = tf.gradients(kl_loss, [d])[0]
             d = tf.stop_gradient(grad)
             d /= (tf.reshape(tf.sqrt(tf.reduce_sum(tf.pow(d, 2.0), axis=1)), [-1, 1]) + 1e-16)
 
-        logits = tf.stop_gradient(logits)
-        y1 = logits
+        y1 = tf.stop_gradient(logits)
         y2 = self.network.build(
             [("cluster_logits", self.n_classes)],
-            self.layer_sizes, self.X + d, use_bn=True, reuse=True
+            self.layer_sizes, self.X + d, is_training=self.is_training, reuse=True
         )
         return tf.reduce_mean(self.compute_kld(y1, y2))
 
@@ -677,18 +677,22 @@ class IMSAT:
         loss = 0.0
         for batch in data.get_batches():
             feed = {
-                self.X: batch
+                self.X: batch,
+                self.is_training: True
             }
             batch_loss, el, al, _ = session.run(
                 [self.loss, self.entropy_loss, self.adversary_loss, self.train_step],
                 feed_dict=feed
             )
+            print(el, al)
             loss += batch_loss / data.epoch_len
+            break
         return loss
 
     def get_accuracy(self, session, data):
         logits = session.run(self.logits, feed_dict={
             self.X: data.data,
+            self.is_training: False
         })
 
         clusters = np.argmax(logits, axis=-1)[:, None]
