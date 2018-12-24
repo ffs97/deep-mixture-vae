@@ -24,7 +24,7 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("model", "vademoe",
-                    "Model to use [imsat, dmvae, vade, dmoe, dvmoe, vademoe]")
+                    "Model to use [dmvae, vade, imsat, dmoe, dvmoe, vademoe, imsatmoe]")
 flags.DEFINE_string("dataset", "mnist",
                     "Dataset to use [mnist, spiral]")
 
@@ -94,7 +94,7 @@ def main(argv):
     if moe:
         from includes.utils import MEDataset as Dataset
 
-        if model_str not in ["dmoe", "vademoe", "dvmoe"]:
+        if model_str not in ["dmoe", "vademoe", "dvmoe", "imsatmoe"]:
             raise NotImplementedError
 
         if model_str == "dmoe":
@@ -123,6 +123,12 @@ def main(argv):
                 [256, 256, 512], [512, 256]
             )
 
+        elif model_str == "imsatmoe":
+            model = models.IMSATMoE(
+                model_str, input_type, input_dim, output_dim, n_classes,
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+            ).build_graph([1200, 1200])
+
         train_data, test_data = load_data(dataset)
         train_data, test_data = generate_regression_variable(
             (train_data, test_data), output_dim, n_clusters
@@ -131,7 +137,7 @@ def main(argv):
     else:
         from includes.utils import Dataset
 
-        if model_str not in ["imsat", "dmvae", "vade"]:
+        if model_str not in ["dmvae", "vade", "imsat"]:
             raise NotImplementedError
 
         if model_str == "dmvae":
@@ -191,7 +197,12 @@ def main(argv):
     with tqdm(range(n_epochs), postfix={"loss": "inf", "accy": "0.00%"}) as bar:
         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         saver = tf.train.Saver(var_list)
-        ckpt_path = "saved_models/%s/model/parameters.ckpt" % model.name
+
+        # little hack to create proper directory structure
+        save_path = "saved_models/%s/model/" % model.name
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        ckpt_path = save_path + "parameters.ckpt"
 
         try:
             saver.restore(sess, ckpt_path)
