@@ -1,19 +1,20 @@
 import numpy as np
 import tensorflow as tf
 
+from tqdm import tqdm
 from includes.utils import Dataset
 from includes.network import FeedForwardNetwork
 from base_models import DeepMixtureVAE, VaDE
 
 
 class DeepMoE:
-    def __init__(self, name, input_dim, output_dim, n_classes, activation=None, initializer=None):
+    def __init__(self, name, input_dim, output_dim, n_experts, activation=None, initializer=None):
         self.name = name
 
         self.input_dim = input_dim
         self.output_dim = output_dim
 
-        self.n_classes = n_classes
+        self.n_experts = n_experts
 
         self.activation = activation
         self.initializer = initializer
@@ -31,32 +32,32 @@ class DeepMoE:
                 name="logits_network"
             )
             self.logits = self.logits_network.build(
-                [("logits", self.n_classes)],
+                [("logits", self.n_experts)],
                 network_layer_sizes, self.X
             )
 
             self.regression_biases = tf.get_variable(
                 "regression_biases", dtype=tf.float32,
                 initializer=tf.initializers.zeros,
-                shape=(self.output_dim, self.n_classes)
+                shape=(self.output_dim, self.n_experts)
             )
             self.regression_weights = tf.get_variable(
                 "regression_weights", dtype=tf.float32,
                 initializer=tf.initializers.random_normal,
-                shape=(self.n_classes, self.output_dim, self.input_dim)
+                shape=(self.n_experts, self.output_dim, self.input_dim)
             )
 
-            self.cluster_probs = tf.nn.softmax(self.logits, axis=-1)
+            self.expert_probs = tf.nn.softmax(self.logits, axis=-1)
 
             self.reconstructed_Y_k = tf.transpose(tf.matmul(
                 self.regression_weights,
                 tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
+                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
                 )
             )) + self.regression_biases
 
             self.reconstructed_Y = tf.reduce_sum(
-                self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
+                self.reconstructed_Y_k * self.expert_probs[:, None, :], axis=-1
             )
 
             self.error = tf.reduce_mean(
@@ -65,7 +66,7 @@ class DeepMoE:
 
             return self
 
-    def square_error(self, session, data):
+    def get_accuracy(self, session, data):
         return session.run(self.error, feed_dict={
             self.X: data.data,
             self.Y: data.labels
@@ -73,7 +74,7 @@ class DeepMoE:
 
     def define_train_loss(self):
         self.loss = - tf.log(tf.reduce_sum(
-            self.cluster_probs * tf.exp(-0.5 * tf.reduce_sum(
+            self.expert_probs * tf.exp(-0.5 * tf.reduce_sum(
                 tf.square(self.reconstructed_Y_k - self.Y[:, :, None]), axis=1
             ))
         ))
@@ -111,7 +112,7 @@ class DeepMoE:
 
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_classes, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
         self.name = name
 
         self.input_dim = input_dim
@@ -119,8 +120,9 @@ class MoE:
         self.output_dim = output_dim
 
         self.input_type = input_type
+        self.classification = classification
 
-        self.n_classes = n_classes
+        self.n_experts = n_experts
 
         self.activation = activation
         self.initializer = initializer
@@ -131,12 +133,83 @@ class MoE:
         self.Y = None
 
         self.error = None
-        self.cluster_probs = None
+        self.expert_probs = None
 
         self.reconstructed_Y_k = None
 
-    def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
+    def _define_vae(self):
         raise NotImplementedError
+
+    def define_vae(self):
+        with tf.variable_scope(self.name) as _:
+            self._define_vae()
+
+    def build_graph(self):
+        with tf.variable_scope(self.name) as _:
+            self.define_vae()
+
+            self.X = self.vae.X
+            self.Z = self.vae.Z
+            self.Y = tf.placeholder(
+                tf.float32, shape=(None, self.output_dim), name="Y"
+            )
+
+            if self.classification:
+                self.n_classes = self.output_dim
+                self.output_dim = 1
+
+            self.logits = self.vae.logits
+
+            self.reconstructed_X = self.vae.reconstructed_X
+
+            self.regression_biases = tf.get_variable(
+                "regression_biases", dtype=tf.float32,
+                initializer=tf.initializers.zeros,
+                shape=(self.output_dim, self.n_experts)
+            )
+            self.regression_weights = tf.get_variable(
+                "regression_weights", dtype=tf.float32,
+                initializer=tf.initializers.random_normal,
+                shape=(self.n_experts, self.output_dim, self.input_dim)
+            )
+
+            self.expert_probs = tf.nn.softmax(self.logits, axis=-1)
+
+            self.reconstructed_Y_k = tf.transpose(tf.matmul(
+                self.regression_weights,
+                tf.tile(
+                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
+                )
+            )) + self.regression_biases
+
+            if self.classification:
+                self.reconstructed_Y_k = tf.nn.softmax(
+                    tf.layers.flatten(self.reconstructed_Y_k)
+                ) * self.expert_probs
+                self.reconstructed_Y_k /= tf.reduce_sum(
+                    self.reconstructed_Y_k, axis=-1, keep_dims=True
+                )
+
+                self.reconstructed_Y = tf.one_hot(
+                    tf.reshape(tf.nn.top_k(
+                        self.reconstructed_Y_k).indices, (-1,)
+                    ),
+                    self.n_classes
+                )
+
+                self.error = tf.reduce_sum(
+                    tf.abs(self.Y - self.reconstructed_Y)
+                ) / 2
+            else:
+                self.reconstructed_Y = tf.reduce_sum(
+                    self.reconstructed_Y_k * self.expert_probs[:, None, :], axis=-1
+                )
+
+                self.error = tf.reduce_mean(
+                    tf.square(self.reconstructed_Y - self.Y)
+                ) * self.output_dim
+
+            return self
 
     def sample_generative_feed(self, n, **kwargs):
         return self.vae.sample_generative_feed(n, **kwargs)
@@ -144,54 +217,68 @@ class MoE:
     def sample_reparametrization_variables(self, n):
         return self.vae.sample_reparametrization_variables(n)
 
-    def square_error(self, session, data):
-        return session.run(self.error, feed_dict={
-            self.X: data.data,
-            self.Y: data.labels
-        })
+    def get_accuracy(self, session, data):
+        error = 0.0
+        for X_batch, Y_batch, _ in data.get_batches():
+            error += session.run(self.error, feed_dict={
+                self.X: X_batch,
+                self.Y: Y_batch
+            })
+
+        if self.classification:
+            error /= len(data.data) * 100
+
+            return 100 - error
+
+        else:
+            error /= data.epoch_len
+
+            return -error
 
     def define_train_loss(self):
         self.vae.define_train_loss()
 
-        self.recon_loss = - tf.log(tf.reduce_sum(
-            self.cluster_probs * tf.exp(-0.5 * tf.reduce_sum(
-                tf.square(self.reconstructed_Y_k - self.Y[:, :, None]), axis=1
+        if self.classification:
+            self.recon_loss = -tf.reduce_mean(tf.reduce_sum(
+                self.Y * tf.log(self.reconstructed_Y_k + 1e-20), axis=-1
             ))
-        ))
+        else:
+            self.recon_loss = - tf.log(tf.reduce_sum(
+                self.expert_probs * tf.exp(-0.5 * tf.reduce_sum(
+                    tf.square(self.reconstructed_Y_k - self.Y[:, :, None]), axis=1
+                ))
+            ))
 
         self.loss = self.vae.loss + self.recon_loss
 
-    def pretrain(self, session, data, n_epochs):
-        print("Pretraining Model")
-        data = Dataset(data.data, data.batch_size, data.shuffle)
-        for _ in range(n_epochs):
-            self.vae.train_op(session, data)
+    def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
+        self.vae.define_train_step(
+            init_lr, decay_steps, decay_rate
+        )
 
     def define_train_step(self, init_lr, decay_steps, decay_rate=0.9, pretrain_init_lr=None,
                           pretrain_decay_steps=None, pretrain_decay_rate=None):
         self.define_train_loss()
 
-        if pretrain_init_lr is None:
-            pretrain_init_lr = init_lr
-        if pretrain_decay_rate is None:
-            pretrain_decay_rate = decay_rate
-        if pretrain_decay_steps is None:
-            pretrain_decay_steps = decay_steps
-
-        self.vae.define_train_step(
-            pretrain_init_lr, pretrain_decay_steps, pretrain_decay_rate
-        )
-
         learning_rate = tf.train.exponential_decay(
-            learning_rate=pretrain_init_lr,
+            learning_rate=init_lr,
             global_step=0,
-            decay_steps=pretrain_decay_steps,
-            decay_rate=pretrain_decay_rate
+            decay_steps=decay_steps,
+            decay_rate=decay_rate
         )
 
         self.train_step = tf.train.AdamOptimizer(
             learning_rate=learning_rate
         ).minimize(self.loss)
+
+    def pretrain(self, session, data, n_epochs):
+        print("Pretraining Model")
+        data = Dataset((data.data, data.classes),
+                       data.batch_size, data.shuffle)
+
+        with tqdm(range(n_epochs)) as bar:
+            for _ in bar:
+                self.vae.train_op(session, data)
 
     def train_op(self, session, data):
         assert(self.train_step is not None)
@@ -215,115 +302,27 @@ class MoE:
         return loss
 
 
-class DVMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_classes, activation=None, initializer=None):
-        MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_classes,
+class DeepVariationalMoE(MoE):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+        MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification,
                      activation=activation, initializer=initializer)
 
-    def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
+    def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
-                "mixture_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_classes, activation=self.activation, initializer=self.initializer
-            )
-            self.vae.build_graph(encoder_layer_sizes, decoder_layer_sizes)
-
-            self.X = self.vae.X
-            self.Z = self.vae.Z
-            self.Y = tf.placeholder(
-                tf.float32, shape=(None, self.output_dim), name="Y"
-            )
-
-            self.logits = self.vae.logits
-
-            self.reconstructed_X = self.vae.reconstructed_X
-
-            self.regression_biases = tf.get_variable(
-                "regression_biases", dtype=tf.float32,
-                initializer=tf.initializers.zeros,
-                shape=(self.output_dim, self.n_classes)
-            )
-            self.regression_weights = tf.get_variable(
-                "regression_weights", dtype=tf.float32,
-                initializer=tf.initializers.random_normal,
-                shape=(self.n_classes, self.output_dim, self.input_dim)
-            )
-
-            self.cluster_probs = tf.nn.softmax(self.logits, axis=-1)
-
-            self.reconstructed_Y_k = tf.transpose(tf.matmul(
-                self.regression_weights,
-                tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
-                )
-            )) + self.regression_biases
-
-            self.reconstructed_Y = tf.reduce_sum(
-                self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
-            )
-
-            self.error = tf.reduce_mean(
-                tf.square(self.reconstructed_Y - self.Y)
-            ) * self.output_dim
-
-            return self
+                "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
+                self.n_experts, activation=self.activation, initializer=self.initializer
+            ).build_graph()
 
 
 class VaDEMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_classes, activation=None, initializer=None):
-        MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_classes,
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, activation=None, initializer=None):
+        MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
                      activation=activation, initializer=initializer)
 
-    def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
+    def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = VaDE(
                 "vade", self.input_type, self.input_dim, self.latent_dim,
-                self.n_classes, activation=self.activation, initializer=self.initializer
-            )
-            self.vae.build_graph(encoder_layer_sizes, decoder_layer_sizes)
-
-            self.X = self.vae.X
-            self.Z = self.vae.Z
-            self.Y = tf.placeholder(
-                tf.float32, shape=(None, self.output_dim), name="Y"
-            )
-
-            self.reconstructed_X = self.vae.reconstructed_X
-
-            self.regression_biases = tf.get_variable(
-                "regression_biases", dtype=tf.float32,
-                initializer=tf.initializers.zeros,
-                shape=(self.output_dim, self.n_classes)
-            )
-            self.regression_weights = tf.get_variable(
-                "regression_weights", dtype=tf.float32,
-                initializer=tf.initializers.random_normal,
-                shape=(self.n_classes, self.output_dim, self.input_dim)
-            )
-
-            self.cluster_probs = self.vae.cluster_weights
-
-            self.reconstructed_Y_k = tf.transpose(tf.matmul(
-                self.regression_weights,
-                tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_classes, 1, 1]
-                )
-            )) + self.regression_biases
-
-            self.reconstructed_Y = tf.reduce_sum(
-                self.reconstructed_Y_k * self.cluster_probs[:, None, :], axis=-1
-            )
-
-            self.error = tf.reduce_mean(
-                tf.square(self.reconstructed_Y - self.Y)
-            ) * self.output_dim
-
-            return self
-
-    def square_error(self, session, data):
-        return session.run(self.error, feed_dict={
-            self.X: data.data,
-            self.Y: data.labels,
-            self.vae.epsilon: np.zeros(
-                (len(data.data), self.latent_dim), dtype=float)
-        })
+                self.n_experts, activation=self.activation, initializer=self.initializer
+            ).build_graph()

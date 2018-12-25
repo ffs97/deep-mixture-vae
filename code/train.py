@@ -95,8 +95,8 @@ def main(argv):
 
     if moe:
         n_experts = n_classes
-        if not classification:
-            n_experts = dataset.n_classes
+        if classification:
+            output_dim = dataset.n_classes
 
         from includes.utils import MEDataset as Dataset
 
@@ -115,20 +115,16 @@ def main(argv):
             plotting = False
 
         elif model_str == "dvmoe":
-            model = models.DVMoE(
+            model = models.DeepVariationalMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph(
-                {"Z": [500, 500, 2000], "C": [256, 512]}, [2000, 500, 500]
-            )
+            ).build_graph()
 
         elif model_str == "vademoe":
             model = models.VaDEMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph(
-                [256, 256, 512], [512, 256]
-            )
+            ).build_graph()
 
         test_data = (
             dataset.test_data, dataset.test_classes, dataset.test_labels
@@ -222,7 +218,7 @@ def main(argv):
             if moe:
                 bar.set_postfix({
                     "loss": "%.4f" % model.train_op(sess, train_data),
-                    "lsqe": "%.4f" % model.square_error(sess, test_data)
+                    "lsqe": "%.4f" % model.get_accuracy(sess, test_data)
                 })
             else:
                 bar.set_postfix({
