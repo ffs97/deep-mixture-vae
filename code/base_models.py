@@ -156,23 +156,23 @@ class DeepMixtureVAE(VAE):
                         ("cn", {
                             "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
                         }),
-                        # ("cn", {
-                        #     "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
-                        # }),
+                        ("cn", {
+                            "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                        }),
                         ("mp", {"k": 2}),
                         ("cn", {
                             "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
                         }),
-                        # ("cn", {
-                        #     "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
-                        # }),
+                        ("cn", {
+                            "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                        }),
                         ("mp", {"k": 2}),
                         ("cn", {
                             "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
                         }),
-                        # ("cn", {
-                        #     "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
-                        # }),
+                        ("cn", {
+                            "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                        }),
                         ("mp", {"k": 2}),
                         ("fc", {"input_dim": 2048, "output_dim": 128})
                     ],

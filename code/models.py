@@ -47,7 +47,7 @@ class DeepMoE:
                 shape=(self.n_experts, self.output_dim, self.input_dim)
             )
 
-            self.expert_probs = tf.nn.softmax(self.logits, axis=-1)
+            self.expert_probs = tf.nn.softmax(self.logits)
 
             self.reconstructed_Y_k = tf.transpose(tf.matmul(
                 self.regression_weights,
@@ -129,14 +129,6 @@ class MoE:
 
         self.vae = None
 
-        self.X = None
-        self.Y = None
-
-        self.error = None
-        self.expert_probs = None
-
-        self.reconstructed_Y_k = None
-
     def _define_vae(self):
         raise NotImplementedError
 
@@ -173,7 +165,7 @@ class MoE:
                 shape=(self.n_experts, self.output_dim, self.input_dim)
             )
 
-            self.expert_probs = tf.nn.softmax(self.logits, axis=-1)
+            self.expert_probs = tf.nn.softmax(self.logits)
 
             self.reconstructed_Y_k = tf.transpose(tf.matmul(
                 self.regression_weights,
@@ -226,7 +218,7 @@ class MoE:
             })
 
         if self.classification:
-            error /= len(data.data) * 100
+            error /= data.len * 100
 
             return 100 - error
 
