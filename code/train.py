@@ -55,6 +55,12 @@ parser.add_argument("--plot_epochs", type=int, default=100,
 parser.add_argument("--save_epochs", type=int, default=10,
                     help="Nummber of epochs before saving model")
 
+parser.add_argument("--n_experts", type=int, default=5,
+                    help="Number of experts in MoE model")
+
+parser.add_argument("--testing", action="store_true", default=False,
+                    help="To test inner working of model mannualy")
+
 args = parser.parse_args()
 print(args)
 
@@ -94,7 +100,6 @@ def main(argv):
         n_classes = argv.n_classes
 
     if moe:
-        n_experts = n_classes
         if classification:
             output_dim = dataset.n_classes
 
@@ -105,7 +110,7 @@ def main(argv):
 
         if model_str == "dmoe":
             model = models.DeepMoE(
-                model_str, dataset.input_dim, output_dim, n_experts, classification,
+                model_str, dataset.input_dim, output_dim, args.n_experts, classification,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             )
             model.build_graph(
@@ -116,13 +121,13 @@ def main(argv):
 
         elif model_str == "dvmoe":
             model = models.DeepVariationalMoE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
+                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, args.n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
 
         elif model_str == "vademoe":
             model = models.VaDEMoE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
+                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, args.n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
 
@@ -209,16 +214,18 @@ def main(argv):
                 if dataset.regeneration_plot is not None:
                     dataset.regeneration_plot(model, test_data, sess)
 
-            if epoch % save_epochs == 0:
+            if epoch % save_epochs == 0 and epoch > 0:
                 accuracy = model.get_accuracy(sess, train_data)
                 if accuracy > max_accuracy:
                     max_accuracy = accuracy
                     saver.save(sess, ckpt_path)
+                if args.testing:
+                    model.testSomething(sess, train_data)
 
             if moe:
                 bar.set_postfix({
                     "loss": "%.4f" % model.train_op(sess, train_data),
-                    "lsqe": "%.4f" % model.get_accuracy(sess, test_data)
+                    "accy": "%.4f" % model.get_accuracy(sess, test_data)
                 })
             else:
                 bar.set_postfix({

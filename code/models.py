@@ -146,10 +146,6 @@ class MoE:
                 tf.float32, shape=(None, self.output_dim), name="Y"
             )
 
-            if self.classification:
-                self.n_classes = self.output_dim
-                self.output_dim = 1
-
             self.logits = self.vae.logits
 
             self.reconstructed_X = self.vae.reconstructed_X
@@ -167,7 +163,7 @@ class MoE:
 
             self.expert_probs = tf.nn.softmax(self.logits)
 
-            self.reconstructed_Y_k = tf.transpose(tf.matmul(
+            self.a = tf.transpose(tf.matmul(
                 self.regression_weights,
                 tf.tile(
                     tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
@@ -175,18 +171,18 @@ class MoE:
             )) + self.regression_biases
 
             if self.classification:
-                self.reconstructed_Y_k = tf.nn.softmax(
-                    tf.layers.flatten(self.reconstructed_Y_k)
-                ) * self.expert_probs
-                self.reconstructed_Y_k /= tf.reduce_sum(
-                    self.reconstructed_Y_k, axis=-1, keep_dims=True
+
+                self.b = tf.nn.softmax(self.a, axis=1) # has probabilities of each class for each expert (None, # classes, # experts)
+                self.unnormProb = tf.reduce_sum(self.b * self.expert_probs[:, None, :], axis = -1 ) # unnormalized probabilities of each class
+                self.reconstructed_Y_k = self.unnormProb / tf.reduce_sum(
+                    self.unnormProb, axis=-1, keep_dims=True
                 )
 
                 self.reconstructed_Y = tf.one_hot(
                     tf.reshape(tf.nn.top_k(
                         self.reconstructed_Y_k).indices, (-1,)
                     ),
-                    self.n_classes
+                    self.output_dim
                 )
 
                 self.error = tf.reduce_sum(
@@ -218,9 +214,9 @@ class MoE:
             })
 
         if self.classification:
-            error /= data.len * 100
+            error /= data.len
 
-            return 100 - error
+            return 100 - error*100
 
         else:
             error /= data.epoch_len
@@ -289,9 +285,24 @@ class MoE:
                 [self.loss, self.train_step],
                 feed_dict=feed
             )
+            
+            # import pdb;pdb.set_trace()
             loss += batch_loss / data.epoch_len
 
         return loss
+        
+    def testSomething(self, session, data):
+        for X_batch, Y_batch, _ in data.get_batches():
+            feed = {
+                self.X: X_batch,
+                self.Y: Y_batch
+            }
+            feed.update(
+                self.vae.sample_reparametrization_variables(len(X_batch))
+            )
+            import pdb;pdb.set_trace()
+            #  = session.run([],feed_dict=feed)
+            break
 
 
 class DeepVariationalMoE(MoE):

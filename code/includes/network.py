@@ -63,10 +63,10 @@ class DeepNetwork:
                     layer_ = MaxPooling
                 else:
                     raise NotImplementedError
-
+                
                 self.layers.append(
                     layer_(
-                        name, **layer[1], activation=activation, initializer=initializer
+                        name, activation=activation, initializer=initializer, **layer[1]
                     )
                 )
 
