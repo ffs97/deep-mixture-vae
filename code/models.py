@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from includes.utils import Dataset
 from includes.network import FeedForwardNetwork
-from vae_models import DiscreteMixtureVAE, VaDE
+from vae_models import DiscreteMixtureVAE, VaDE, IMSAT
 
 
 class DeepMoE:
@@ -26,6 +26,7 @@ class DeepMoE:
             self.Y = tf.placeholder(
                 tf.float32, shape=(None, self.output_dim), name="Y"
             )
+            self.is_training = tf.placeholder(tf.bool)
 
             self.logits_network = FeedForwardNetwork(
                 name="logits_network"
@@ -124,18 +125,19 @@ class IMSATMoE:
 
     def build_graph(self, network_layer_sizes):
         with tf.variable_scope(self.name) as _:
-            self.X = tf.placeholder(
-                tf.float32, shape=(None, self.input_dim), name="X"
-            )
-            self.Y = tf.placeholder(
-                tf.float32, shape=(None, self.output_dim), name="Y"
-            )
-
             self.logits_model = IMSAT(
                 self.name, self.input_type, self.input_dim, self.n_classes,
                 activation=self.activation, initializer=self.initializer
             )
+            self.logits_model.build_graph(network_layer_sizes)
+            self.X = self.logits_model.X
+            self.is_training = self.logits_model.is_training
             self.cluster_probs = self.logits_model.cluster_weights
+
+            self.Y = tf.placeholder(
+                tf.float32, shape=(None, self.output_dim), name="Y"
+            )
+
 
             self.regression_biases = tf.get_variable(
                 "regression_biases", dtype=tf.float32,
@@ -168,11 +170,12 @@ class IMSATMoE:
     def square_error(self, session, data):
         return session.run(self.error, feed_dict={
             self.X: data.data,
-            self.Y: data.labels
+            self.Y: data.labels,
+            self.is_training: False
         })
 
     def define_train_loss(self):
-        self.logit_loss = self.logits.define_train_loss()
+        self.logit_loss = self.logits_model.define_train_loss()
 
         self.regression_loss = - tf.log(tf.reduce_sum(
             self.cluster_probs * tf.exp(-0.5 * tf.reduce_sum(
@@ -180,7 +183,7 @@ class IMSATMoE:
             ))
         ))
 
-        self.loss = self.regression_loss + self.logits_network.loss
+        self.loss = self.regression_loss + self.logits_model.loss
 
     def define_train_step(self, init_lr, decay_steps, decay_rate=0.9):
         learning_rate = tf.train.exponential_decay(
@@ -202,7 +205,8 @@ class IMSATMoE:
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
-                self.Y: Y_batch
+                self.Y: Y_batch,
+                self.is_training: True
             }
 
             batch_loss, _ = session.run(

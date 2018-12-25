@@ -1,5 +1,5 @@
 import os
-# import models
+import models
 import vae_models
 import numpy as np
 import tensorflow as tf
@@ -128,6 +128,7 @@ def main(argv):
                 model_str, input_type, input_dim, output_dim, n_classes,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph([1200, 1200])
+            plotting = False
 
         train_data, test_data = load_data(dataset)
         train_data, test_data = generate_regression_variable(
@@ -220,10 +221,11 @@ def main(argv):
                     sample_plot(model, sess)
                     regeneration_plot(model, test_data, sess)
 
-                accuracy = model.get_accuracy(sess, train_data)
-                if accuracy > max_accuracy:
-                    max_accuracy = accuracy
-                    saver.save(sess, ckpt_path)
+                if not moe:
+                    accuracy = model.get_accuracy(sess, train_data)
+                    if accuracy > max_accuracy:
+                        max_accuracy = accuracy
+                        saver.save(sess, ckpt_path)
 
             if moe:
                 bar.set_postfix({
