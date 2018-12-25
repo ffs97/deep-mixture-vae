@@ -113,6 +113,21 @@ class VAE:
 
         return loss
 
+    def debug(self, session, data):
+        import pdb
+
+        for batch in data.get_batches():
+            feed = {
+                self.X: batch
+            }
+            feed.update(
+                self.sample_reparametrization_variables(len(batch))
+            )
+
+            pdb.set_trace()
+
+            break
+
 
 class DeepMixtureVAE(VAE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None):
@@ -228,7 +243,7 @@ class DeepMixtureVAE(VAE):
                 decoder_network = DeepNetwork(
                     "layers",
                     [
-                        ("fc", {"input_dim": 10, "output_dim": 128}),
+                        ("fc", {"input_dim": self.latent_dim, "output_dim": 128}),
                         ("fc", {"input_dim": 128, "output_dim": 256}),
                         ("fc", {"input_dim": 256, "output_dim": 512})
                     ],

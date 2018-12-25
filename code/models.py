@@ -122,7 +122,7 @@ class MoE:
         self.input_type = input_type
         self.classification = classification
 
-        self.n_experts = n_experts
+        self.n_experts = self.n_classes = n_experts
 
         self.activation = activation
         self.initializer = initializer
@@ -163,7 +163,7 @@ class MoE:
 
             self.expert_probs = tf.nn.softmax(self.logits)
 
-            self.a = tf.transpose(tf.matmul(
+            expert_predictions = tf.transpose(tf.matmul(
                 self.regression_weights,
                 tf.tile(
                     tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
@@ -171,18 +171,21 @@ class MoE:
             )) + self.regression_biases
 
             if self.classification:
+                expert_class_probs = tf.nn.softmax(
+                    tf.transpose(expert_predictions, (0, 2, 1))
+                )
 
-                self.b = tf.nn.softmax(self.a, axis=1) # has probabilities of each class for each expert (None, # classes, # experts)
-                self.unnormProb = tf.reduce_sum(self.b * self.expert_probs[:, None, :], axis = -1 ) # unnormalized probabilities of each class
-                self.reconstructed_Y_k = self.unnormProb / tf.reduce_sum(
-                    self.unnormProb, axis=-1, keep_dims=True
+                unnorm_class_probs = tf.reduce_sum(
+                    expert_class_probs * self.expert_probs[:, :, None], axis=1
+                )
+                self.reconstructed_Y_soft = unnorm_class_probs / tf.reduce_sum(
+                    unnorm_class_probs, axis=-1, keep_dims=True
                 )
 
                 self.reconstructed_Y = tf.one_hot(
-                    tf.reshape(tf.nn.top_k(
-                        self.reconstructed_Y_k).indices, (-1,)
-                    ),
-                    self.output_dim
+                    tf.reshape(
+                        tf.nn.top_k(self.reconstructed_Y_soft).indices, (-1,)
+                    ), self.output_dim
                 )
 
                 self.error = tf.reduce_sum(
@@ -190,7 +193,7 @@ class MoE:
                 ) / 2
             else:
                 self.reconstructed_Y = tf.reduce_sum(
-                    self.reconstructed_Y_k * self.expert_probs[:, None, :], axis=-1
+                    expert_predictions * self.expert_probs[:, None, :], axis=-1
                 )
 
                 self.error = tf.reduce_mean(
@@ -216,7 +219,7 @@ class MoE:
         if self.classification:
             error /= data.len
 
-            return 100 - error*100
+            return 1 - error
 
         else:
             error /= data.epoch_len
@@ -228,14 +231,12 @@ class MoE:
 
         if self.classification:
             self.recon_loss = -tf.reduce_mean(tf.reduce_sum(
-                self.Y * tf.log(self.reconstructed_Y_k + 1e-20), axis=-1
+                self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
             ))
         else:
-            self.recon_loss = - tf.log(tf.reduce_sum(
-                self.expert_probs * tf.exp(-0.5 * tf.reduce_sum(
-                    tf.square(self.reconstructed_Y_k - self.Y[:, :, None]), axis=1
-                ))
-            ))
+            self.recon_loss = 0.5 * tf.reduce_mean(
+                tf.square(self.reconstructed_Y - self.Y)
+            ) * self.output_dim
 
         self.loss = self.vae.loss + self.recon_loss
 
@@ -285,13 +286,15 @@ class MoE:
                 [self.loss, self.train_step],
                 feed_dict=feed
             )
-            
+
             # import pdb;pdb.set_trace()
             loss += batch_loss / data.epoch_len
 
         return loss
-        
-    def testSomething(self, session, data):
+
+    def debug(self, session, data):
+        import pdb
+
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -300,15 +303,16 @@ class MoE:
             feed.update(
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
-            import pdb;pdb.set_trace()
-            #  = session.run([],feed_dict=feed)
+
+            pdb.set_trace()
+
             break
 
 
 class DeepVariationalMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
-        MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification,
-                     activation=activation, initializer=initializer)
+        MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
+                     classification, activation=activation, initializer=initializer)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
@@ -319,9 +323,9 @@ class DeepVariationalMoE(MoE):
 
 
 class VaDEMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:

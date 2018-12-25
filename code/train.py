@@ -34,8 +34,11 @@ parser.add_argument("--latent_dim", type=int, default=10,
                     help="Number of dimensions for latent variable Z")
 parser.add_argument("--output_dim", type=int, default=1,
                     help="Output dimension for regression variable for ME models")
-parser.add_argument("--n_classes", type=int, default=-1,
-                    help="Number of clusters or classes to use for ME models")
+
+parser.add_argument("--n_clusters", type=int, default=-1,
+                    help="Number of clusters to use")
+parser.add_argument("--n_experts", type=int, default=5,
+                    help="Number of experts to use for MoE models")
 
 parser.add_argument("--classification", action="store_true", default=False,
                     help="Whether the objective is classification or regression (ME models)")
@@ -47,6 +50,20 @@ parser.add_argument("--pretrain_epochs_vae", type=int, default=200,
 parser.add_argument("--pretrain_epochs_gmm", type=int, default=200,
                     help="Number of epochs for pretraining the gmm model")
 
+parser.add_argument("--init_lr", type=float, default=0.002,
+                    help="Initial learning rate for training")
+parser.add_argument("--decay_rate", type=float, default=0.9,
+                    help="Decay rate for exponentially decaying learning rate (< 1.0)")
+parser.add_argument("--decay_epochs", type=int, default=25,
+                    help="Number of epochs between exponentially decay of learning rate")
+
+parser.add_argument("--pretrain_init_lr", type=float, default=0.002,
+                    help="Initial learning rate for pretraining")
+parser.add_argument("--pretrain_decay_rate", type=float, default=0.9,
+                    help="Decay rate for exponentially decaying learning rate (< 1.0) for pretraining")
+parser.add_argument("--pretrain_decay_epochs", type=int, default=25,
+                    help="Number of epochs between exponentially decay of learning rate for pretraining")
+
 parser.add_argument("--plotting", action="store_true", default=False,
                     help="Whether to generate sampling and regeneration plots")
 parser.add_argument("--plot_epochs", type=int, default=100,
@@ -55,32 +72,34 @@ parser.add_argument("--plot_epochs", type=int, default=100,
 parser.add_argument("--save_epochs", type=int, default=10,
                     help="Nummber of epochs before saving model")
 
-parser.add_argument("--n_experts", type=int, default=5,
-                    help="Number of experts in MoE model")
-
-parser.add_argument("--testing", action="store_true", default=False,
-                    help="To test inner working of model mannualy")
-
-args = parser.parse_args()
-print(args)
+parser.add_argument("--debug", action="store_true", default=False,
+                    help="Whether to debug the models or not")
 
 
 def main(argv):
     dataset = argv.dataset
+
     latent_dim = argv.latent_dim
     output_dim = argv.output_dim
-
-    n_classes = argv.n_classes
 
     model_str = argv.model
     model_name = argv.model_name
 
-    plotting = argv.plotting
     plot_epochs = argv.plot_epochs
-
     save_epochs = argv.save_epochs
 
+    plotting = argv.plotting
+    debug = argv.debug
+
     classification = argv.classification
+
+    init_lr = argv.init_lr
+    decay_rate = argv.decay_rate
+    decay_epochs = argv.decay_epochs
+
+    pretrain_init_lr = argv.pretrain_init_lr
+    pretrain_decay_rate = argv.pretrain_decay_rate
+    pretrain_decay_epochs = argv.pretrain_decay_epochs
 
     moe = model_str[-3:] == "moe"
 
@@ -95,11 +114,9 @@ def main(argv):
     if model_name == "":
         model_name = model_str
 
-    n_classes = dataset.n_classes
-    if argv.n_classes > 0:
-        n_classes = argv.n_classes
-
     if moe:
+        n_experts = argv.n_experts
+
         if classification:
             output_dim = dataset.n_classes
 
@@ -110,7 +127,7 @@ def main(argv):
 
         if model_str == "dmoe":
             model = models.DeepMoE(
-                model_str, dataset.input_dim, output_dim, args.n_experts, classification,
+                model_str, dataset.input_dim, output_dim, n_experts, classification,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             )
             model.build_graph(
@@ -121,13 +138,13 @@ def main(argv):
 
         elif model_str == "dvmoe":
             model = models.DeepVariationalMoE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, args.n_experts,
+                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
 
         elif model_str == "vademoe":
             model = models.VaDEMoE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, args.n_experts,
+                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
 
@@ -139,7 +156,9 @@ def main(argv):
         )
 
     else:
-        n_clusters = n_classes
+        n_clusters = argv.n_clusters
+        if n_clusters < 1:
+            n_clusters = dataset.n_classes
 
         from includes.utils import Dataset
 
@@ -172,10 +191,14 @@ def main(argv):
     test_data = Dataset(test_data, batch_size=100)
     train_data = Dataset(train_data, batch_size=100)
 
-    model.define_train_step(0.002, train_data.epoch_len * 25)
+    model.define_train_step(
+        init_lr, train_data.epoch_len * decay_epochs, decay_rate)
 
     if model_str in ["vade", "dvmoe", "vademoe"]:
-        model.define_pretrain_step(0.002, train_data.epoch_len * 10)
+        model.define_pretrain_step(
+            pretrain_init_lr, train_data.epoch_len *
+            pretrain_decay_epochs, pretrain_decay_rate
+        )
 
     model.path = "saved_models/%s/%s" % (dataset.datagroup, model.name)
     for path in [model.path + "/" + x for x in ["model", "vae", "prior"]]:
@@ -211,27 +234,23 @@ def main(argv):
             if plotting and epoch % plot_epochs == 0:
                 if dataset.sample_plot is not None:
                     dataset.sample_plot(model, sess)
+
                 if dataset.regeneration_plot is not None:
                     dataset.regeneration_plot(model, test_data, sess)
 
-            if epoch % save_epochs == 0 and epoch > 0:
+            if epoch % save_epochs == 0:
                 accuracy = model.get_accuracy(sess, train_data)
                 if accuracy > max_accuracy:
                     max_accuracy = accuracy
                     saver.save(sess, ckpt_path)
-                if args.testing:
-                    model.testSomething(sess, train_data)
 
-            if moe:
-                bar.set_postfix({
-                    "loss": "%.4f" % model.train_op(sess, train_data),
-                    "accy": "%.4f" % model.get_accuracy(sess, test_data)
-                })
-            else:
-                bar.set_postfix({
-                    "loss": "%.4f" % model.train_op(sess, train_data),
-                    "accy": "%.2f%%" % accuracy
-                })
+                if debug:
+                    model.debug(sess, train_data)
+
+            bar.set_postfix({
+                "loss": "%.4f" % model.train_op(sess, train_data),
+                "acc": "%.4f" % accuracy
+            })
 
     if plotting:
         dataset.sample_plot(model, sess)
@@ -239,4 +258,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
     main(args)

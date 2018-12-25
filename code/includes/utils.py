@@ -29,7 +29,7 @@ def get_clustering_accuracy(weights, classes):
         d[clusters[i], classes[i]] += 1
 
     ind = linear_assignment(d.max() - d)
-    return sum([d[i, j] for i, j in ind]) / size * 100
+    return sum([d[i, j] for i, j in ind]) / size
 
 
 def generate_regression_variable(dataset, output_dim):
