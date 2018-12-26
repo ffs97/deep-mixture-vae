@@ -226,7 +226,7 @@ def main(argv):
     except:
         print("Could not load trained model")
 
-    with tqdm(range(n_epochs), postfix={"loss": "inf", "accy": "0.00%"}) as bar:
+    with tqdm(range(n_epochs), postfix={"loss": "inf", "accTrain": "0.00%", "accTest": "0.00%"}) as bar:
         accuracy = 0.0
         max_accuracy = 0.0
 
@@ -239,7 +239,7 @@ def main(argv):
                     dataset.regeneration_plot(model, test_data, sess)
 
             if epoch % save_epochs == 0:
-                accuracy = model.get_accuracy(sess, train_data)
+                accuracy = model.get_accuracy(sess, test_data)
                 if accuracy > max_accuracy:
                     max_accuracy = accuracy
                     saver.save(sess, ckpt_path)
@@ -247,9 +247,13 @@ def main(argv):
                 if debug:
                     model.debug(sess, train_data)
 
+            loss, accTrain = model.train_op(sess, train_data)
+            accTest = model.get_accuracy(sess, test_data)
+
             bar.set_postfix({
-                "loss": "%.4f" % model.train_op(sess, train_data),
-                "acc": "%.4f" % accuracy
+                "loss": "%.4f" % loss,
+                "accTrain": "%.4f" % accTrain,
+                "accTest" : "%.4f" % accTest 
             })
 
     if plotting:
