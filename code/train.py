@@ -247,7 +247,7 @@ def main(argv):
                 loss, accTrain = model.train_op(sess, train_data)
             else:
                 loss = model.train_op(sess, train_data)
-                accTest = model.get_accuracy(sess, train_data)
+                accTrain = model.get_accuracy(sess, train_data)
 
             accTest = model.get_accuracy(sess, test_data)
 

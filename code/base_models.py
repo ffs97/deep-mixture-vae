@@ -105,14 +105,13 @@ class VAE:
                 self.sample_reparametrization_variables(len(batch))
             )
 
-            batch_logits, batch_loss, _ = session.run(
-                [self.logits, self.loss, self.train_step],
+            batch_loss, _ = session.run(
+                [self.loss, self.train_step],
                 feed_dict=feed
             )
             loss += batch_loss / data.epoch_len
         
-        batch_acc = get_clustering_accuracy(batch_logits, data.classes)
-        return loss, batch_acc
+        return loss
 
     def debug(self, session, data):
         import pdb
