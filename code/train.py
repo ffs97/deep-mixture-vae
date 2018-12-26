@@ -170,9 +170,9 @@ def main(argv):
             model = base_models.VaDE(
                 model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph(
-                {"Z": [512, 256, 256]}, [256, 256, 512]
-            )
+            ).build_graph()
+            #     {"Z": [512, 256, 256]}, [256, 256, 512]
+            # )
 
         dataset.train_data = np.concatenate(
             [dataset.train_data, dataset.test_data], axis=0
@@ -243,7 +243,12 @@ def main(argv):
                 if debug:
                     model.debug(sess, train_data)
 
-            loss, accTrain = model.train_op(sess, train_data)
+            if moe:
+                loss, accTrain = model.train_op(sess, train_data)
+            else:
+                loss = model.train_op(sess, train_data)
+                accTest = model.get_accuracy(sess, train_data)
+
             accTest = model.get_accuracy(sess, test_data)
 
             bar.set_postfix({

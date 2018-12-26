@@ -43,7 +43,7 @@ class MoE:
                 tf.float32, shape=(None, self.output_dim), name="Y"
             )
 
-            self.logits = self.vae.logits
+            # self.logits = self.vae.logits
 
             self.reconstructed_X = self.vae.reconstructed_X
 
@@ -58,7 +58,7 @@ class MoE:
                 shape=(self.n_experts, self.output_dim, self.input_dim)
             )
 
-            self.expert_probs = tf.nn.softmax(self.logits)
+            self.expert_probs = self.vae.cluster_weights#tf.nn.softmax(self.logits)
 
             expert_predictions = tf.transpose(tf.matmul(
                 self.regression_weights,
@@ -108,10 +108,15 @@ class MoE:
     def get_accuracy(self, session, data):
         error = 0.0
         for X_batch, Y_batch, _ in data.get_batches():
-            error += session.run(self.error, feed_dict={
+            feed = {
                 self.X: X_batch,
                 self.Y: Y_batch
-            })
+            }
+            feed.update(
+                self.vae.sample_reparametrization_variables(len(X_batch))
+            )
+
+            error += session.run(self.error, feed_dict=feed)
 
         if self.classification:
             error /= data.len
@@ -186,10 +191,8 @@ class MoE:
                 feed_dict=feed
             )
 
-            # import pdb;pdb.set_trace()
             loss += batch_loss / data.epoch_len
 
-        # import pdb;pdb.set_trace()
         if self.classification:
            batch_acc = 1 - batch_error/Y_batch.shape[0]
         else:
@@ -221,7 +224,7 @@ class DeepMoE(MoE):
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
-                "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
+                "null_vae", self.input_type, self.input_dim, self.latent_dim,
                 self.n_experts, activation=self.activation, initializer=self.initializer
             ).build_graph()
 

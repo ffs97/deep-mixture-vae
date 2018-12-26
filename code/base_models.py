@@ -291,7 +291,7 @@ class VaDE(VAE):
 
         self.n_classes = n_classes
 
-    def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
+    def build_graph(self):#, encoder_layer_sizes, decoder_layer_sizes):
         with tf.variable_scope(self.name) as _:
             self.X = tf.placeholder(
                 tf.float32, shape=(None, self.input_dim), name="X"
@@ -302,15 +302,55 @@ class VaDE(VAE):
 
             self.latent_variables = dict()
 
-            self.encoder_network = FeedForwardNetwork(
-                name="z/encoder_network",
-                activation=self.activation,
-                initializer=self.initializer
-            )
-            self.mean, self.log_var = self.encoder_network.build(
-                [("mean", self.latent_dim),
-                 ("log_var", self.latent_dim)],
-                encoder_layer_sizes["Z"], self.X
+            #self.encoder_network = FeedForwardNetwork(
+            #    name="z/encoder_network",
+            #    activation=self.activation,
+            #    initializer=self.initializer
+            #)
+            X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
+            with tf.variable_scope("encoder_network"):
+                encoder_network = DeepNetwork(
+                    "layers",
+                    [
+                        ("cn", {
+                            "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                        }),
+                        ("cn", {
+                            "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                        }),
+                        ("mp", {"k": 2}),
+                        ("cn", {
+                            "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
+                        }),
+                        ("cn", {
+                            "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                        }),
+                        ("mp", {"k": 2}),
+                        ("cn", {
+                            "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
+                        }),
+                        ("cn", {
+                            "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                        }),
+                        ("mp", {"k": 2}),
+                        ("fc", {"input_dim": 2048, "output_dim": 128})
+                    ],
+                    
+                    activation=self.activation,
+                    initializer=self.initializer
+                )
+            hidden = encoder_network(X_flat)
+
+            # self.mean, self.log_var = self.encoder_network.build(
+            #    [("mean", self.latent_dim),
+            #     ("log_var", self.latent_dim)],
+            #    encoder_layer_sizes["Z"], self.X
+            #)
+            self.mean = tf.layers.dense(
+                    hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
+                )
+            self.log_var = tf.layers.dense(
+                    hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
             )
 
             self.latent_variables.update({
@@ -332,14 +372,32 @@ class VaDE(VAE):
 
             params["weights"] = self.cluster_weights
 
-            self.decoder_network = FeedForwardNetwork(
-                name="decoder_network",
-                activation=self.activation,
-                initializer=self.initializer
+            #self.decoder_network = FeedForwardNetwork(
+            #    name="decoder_network",
+            #    activation=self.activation,
+            #    initializer=self.initializer
+            #)
+            #self.decoded_X = self.decoder_network.build(
+            #    [("decoded_X", self.input_dim)], decoder_layer_sizes, self.Z
+            #)
+            with tf.variable_scope("decoder_network"):
+                decoder_network = DeepNetwork(
+                    "layers",
+                    [
+                        ("fc", {"input_dim": self.latent_dim, "output_dim": 128}),
+                        ("fc", {"input_dim": 128, "output_dim": 256}),
+                        ("fc", {"input_dim": 256, "output_dim": 512})
+                    ],
+                    activation=self.activation,
+                    initializer=self.initializer
+                )
+
+            hidden = decoder_network(self.Z)
+            
+            self.decoded_X = tf.layers.dense(
+               hidden, self.input_dim, activation=None, kernel_initializer=self.initializer()
             )
-            self.decoded_X = self.decoder_network.build(
-                [("decoded_X", self.input_dim)], decoder_layer_sizes, self.Z
-            )
+
 
             if self.input_type == "binary":
                 self.reconstructed_X = tf.nn.sigmoid(self.decoded_X)
