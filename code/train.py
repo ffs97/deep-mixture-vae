@@ -127,13 +127,9 @@ def main(argv):
 
         if model_str == "dmoe":
             model = models.DeepMoE(
-                model_str, dataset.input_dim, output_dim, n_experts, classification,
+                model_str, dataset.input_type, dataset.input_dim, output_dim, n_experts, classification,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            )
-            model.build_graph(
-                [512, 256]
-            )
-
+            ).build_graph()
             plotting = False
 
         elif model_str == "dvmoe":

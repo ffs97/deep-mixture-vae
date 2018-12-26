@@ -7,210 +7,8 @@ from includes.network import FeedForwardNetwork, DeepNetwork
 from base_models import DeepMixtureVAE, VaDE
 
 
-class DeepMoE:
-    def __init__(self, name, input_dim, output_dim, n_experts, classification, activation=None, initializer=None):
-        self.name = name
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-
-        self.n_experts = n_experts
-
-        self.activation = activation
-        self.initializer = initializer
-        self.classification = classification
-
-    def build_graph(self, network_layer_sizes):
-        with tf.variable_scope(self.name) as _:
-            self.X = tf.placeholder(
-                tf.float32, shape=(None, self.input_dim), name="X"
-            )
-            self.Y = tf.placeholder(
-                tf.float32, shape=(None, self.output_dim), name="Y"
-            )
-
-            # self.logits_network = FeedForwardNetwork(
-            #     name="logits_network"
-            # )
-
-            X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
-            encoder_network = DeepNetwork(
-                "layers",
-                [
-                    ("cn", {
-                        "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
-                    }),
-                    ("cn", {
-                        "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
-                    }),
-                    ("mp", {"k": 2}),
-                    ("cn", {
-                        "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
-                    }),
-                    ("cn", {
-                        "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
-                    }),
-                    ("mp", {"k": 2}),
-                    ("cn", {
-                        "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
-                    }),
-                    ("cn", {
-                        "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
-                    }),
-                    ("mp", {"k": 2}),
-                    ("fc", {"input_dim": 2048, "output_dim": 128})
-                ],
-                # Following for fast testing
-                # [
-                #     ("cn", {
-                #         "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
-                #     }),
-                #     ("mp", {"k": 5}),
-                #     ("fc", {"input_dim": 1152, "output_dim": 128})
-                # ],
-                activation=self.activation,
-                initializer=self.initializer
-            )
-            hidden = encoder_network(X_flat)
-            self.logits = tf.layers.dense(
-                hidden, self.n_experts, activation=None, kernel_initializer=self.initializer()
-            )
-
-            self.regression_biases = tf.get_variable(
-                "regression_biases", dtype=tf.float32,
-                initializer=tf.initializers.zeros,
-                shape=(self.output_dim, self.n_experts)
-            )
-            self.regression_weights = tf.get_variable(
-                "regression_weights", dtype=tf.float32,
-                initializer=tf.initializers.random_normal,
-                shape=(self.n_experts, self.output_dim, self.input_dim)
-            )
-
-            self.expert_probs = tf.nn.softmax(self.logits)
-
-            expert_predictions = tf.transpose(tf.matmul(
-                self.regression_weights,
-                tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
-                )
-            )) + self.regression_biases
-
-            if self.classification:
-                expert_class_probs = tf.nn.softmax(
-                    tf.transpose(expert_predictions, (0, 2, 1))
-                )
-
-                unnorm_class_probs = tf.reduce_sum(
-                    expert_class_probs * self.expert_probs[:, :, None], axis=1
-                )
-                self.reconstructed_Y_soft = unnorm_class_probs / tf.reduce_sum(
-                    unnorm_class_probs, axis=-1, keep_dims=True
-                )
-
-                self.reconstructed_Y = tf.one_hot(
-                    tf.reshape(
-                        tf.nn.top_k(self.reconstructed_Y_soft).indices, (-1,)
-                    ), self.output_dim
-                )
-
-                self.error = tf.reduce_sum(
-                    tf.abs(self.Y - self.reconstructed_Y)
-                ) / 2
-            else:
-                self.reconstructed_Y = tf.reduce_sum(
-                    expert_predictions * self.expert_probs[:, None, :], axis=-1
-                )
-
-                self.error = tf.reduce_mean(
-                    tf.square(self.reconstructed_Y - self.Y)
-                ) * self.output_dim
-
-            return self
-
-    def get_accuracy(self, session, data):
-        error = 0.0
-        for X_batch, Y_batch, _ in data.get_batches():
-            error += session.run(self.error, feed_dict={
-                self.X: X_batch,
-                self.Y: Y_batch
-            })
-
-        if self.classification:
-            error /= data.len
-
-            return 1 - error
-
-        else:
-            error /= data.epoch_len
-
-            return -error
-
-    def define_train_loss(self):
-
-        if self.classification:
-            self.loss = -tf.reduce_mean(tf.reduce_sum(
-                self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
-            ))
-        else:
-            self.loss = 0.5 * tf.reduce_mean(
-                tf.square(self.reconstructed_Y - self.Y)
-            ) * self.output_dim
-
-    def define_train_step(self, init_lr, decay_steps, decay_rate=0.9):
-        learning_rate = tf.train.exponential_decay(
-            learning_rate=init_lr,
-            global_step=0,
-            decay_steps=decay_steps,
-            decay_rate=decay_rate
-        )
-
-        self.define_train_loss()
-        self.train_step = tf.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ).minimize(self.loss)
-
-    def train_op(self, session, data):
-        assert(self.train_step is not None)
-
-        loss = 0.0
-        for X_batch, Y_batch, _ in data.get_batches():
-            feed = {
-                self.X: X_batch,
-                self.Y: Y_batch
-            }
-
-            batch_error, batch_loss, _ = session.run(
-                [self.error, self.loss, self.train_step],
-                feed_dict=feed
-            )
-
-            # import pdb;pdb.set_trace()
-            loss += batch_loss / data.epoch_len
-
-        # import pdb;pdb.set_trace()
-        if self.classification:
-           batch_acc = 1 - batch_error/Y_batch.shape[0]
-        else:
-           batch_acc = - batch_error
-        
-        return loss, batch_acc
-
-    def debug(self, session, data):
-        import pdb
-
-        for X_batch, Y_batch, _ in data.get_batches():
-            feed = {
-                self.X: X_batch,
-                self.Y: Y_batch
-            }
-
-            pdb.set_trace()
-
-            break
-
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1):
         self.name = name
 
         self.input_dim = input_dim
@@ -226,6 +24,7 @@ class MoE:
         self.initializer = initializer
 
         self.vae = None
+        self.lossVAE = lossVAE
 
     def _define_vae(self):
         raise NotImplementedError
@@ -336,7 +135,9 @@ class MoE:
                 tf.square(self.reconstructed_Y - self.Y)
             ) * self.output_dim
 
-        self.loss = self.recon_loss# + self.vae.loss
+        self.loss = self.recon_loss
+        if self.lossVAE:
+            self.loss += self.vae.loss
 
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
         self.vae.define_train_step(
@@ -412,6 +213,17 @@ class MoE:
 
             break
 
+class DeepMoE(MoE):
+    def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+        MoE.__init__(self, name, input_type, input_dim, 1, output_dim, n_experts,
+                     classification, activation=activation, initializer=initializer, lossVAE=0)
+
+    def _define_vae(self):
+        with tf.variable_scope(self.name) as _:
+            self.vae = DeepMixtureVAE(
+                "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
+                self.n_experts, activation=self.activation, initializer=self.initializer
+            ).build_graph()
 
 class DeepVariationalMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
