@@ -1,6 +1,14 @@
 import tensorflow as tf
 
-from includes.layers import FullyConnected, Convolution, MaxPooling
+from includes.layers import FullyConnected, Convolution, MaxPooling, BatchNormalization
+
+
+_layers_id_mapping = {
+    "fc": FullyConnected,
+    "cv": Convolution,
+    "mp": MaxPooling,
+    "bn": BatchNormalization
+}
 
 
 class FeedForwardNetwork:
@@ -52,21 +60,15 @@ class DeepNetwork:
 
         self.layers = []
         with tf.variable_scope(self.name) as _:
-            for index, layer in enumerate(layers):
+            for index, (layer_id, args) in enumerate(layers):
                 name = "layer_%d" % (index + 1)
 
-                if layer[0] == "fc":
-                    layer_ = FullyConnected
-                elif layer[0] == "cn":
-                    layer_ = Convolution
-                elif layer[0] == "mp":
-                    layer_ = MaxPooling
-                else:
+                if layer_id not in _layers_id_mapping:
                     raise NotImplementedError
 
                 self.layers.append(
-                    layer_(
-                        name, activation=activation, initializer=initializer, **layer[1]
+                    _layers_id_mapping[layer_id](
+                        name, activation=activation, initializer=initializer, **args
                     )
                 )
 

@@ -22,8 +22,10 @@ def sample_gumbel(shape, eps=1e-20):
 def get_clustering_accuracy(weights, classes):
     clusters = np.argmax(weights, axis=-1)
 
+    n_classes = weights.shape[1]
+
     size = len(clusters)
-    d = np.zeros((10, 10), dtype=np.int32)
+    d = np.zeros((n_classes, n_classes), dtype=np.int32)
 
     for i in range(size):
         d[clusters[i], classes[i]] += 1
@@ -145,45 +147,65 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         return dataset
 
+    def hhar(dir="data/hhar", filename="hhar.mat"):
+        import scipy.io as scio
+
+        class HHARDataset:
+            pass
+
+        dataset = HHARDataset()
+
+        data = scio.loadmat(dir + "/" + filename)
+
+        X = data["X"]
+        Y = data["Y"] - 1
+
+        train_data, test_data = np.split(X, [8100], axis=0)
+        train_classes, test_classes = np.split(Y, [8100], axis=0)
+
+        dataset.datagroup = "hhar"
+
+        dataset.test_data = test_data
+        dataset.test_classes = test_classes
+
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
+
+        dataset.n_classes = 6
+
+        dataset.input_dim = 561
+        dataset.input_type = "real"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = None
+
+        return dataset
+
     def cifar10(dir="data/cifar10"):
-        from includes import cifar10
+        from tensorflow.keras.datasets.cifar10 import load_data
 
         class Cifar10Dataset:
             pass
 
         dataset = Cifar10Dataset()
 
-        cifar10.data_path = dir
-
-        cifar10.maybe_download_and_extract()
-
-        test_data, test_classes, _ = cifar10.load_test_data()
-        train_data, train_classes, _ = cifar10.load_training_data()
-
-        test_classes -= 1
-        train_classes -= 1
+        (train_data, train_classes), (test_data, test_classes) = load_data()
 
         dataset.datagroup = "cifar10"
 
         dataset.test_classes = test_classes
-
-        test_data = np.dot(test_data, [0.299, 0.587, 0.114])
-        dataset.test_data = np.reshape(test_data, (-1, 1024))
-        # dataset.test_data = np.reshape(test_data, (-1, 3072))
-
         dataset.train_classes = train_classes
-        train_data = np.dot(train_data, [0.299, 0.587, 0.114])
-        dataset.train_data = np.reshape(train_data, (-1, 1024))
-        # dataset.train_data = np.reshape(train_data, (-1, 3072))
+
+        dataset.test_data = np.reshape(test_data, (-1, 3072)) / 255
+        dataset.train_data = np.reshape(train_data, (-1, 3072)) / 255
 
         dataset.n_classes = 10
 
-        # dataset.input_dim = 3072
-        dataset.input_dim = 1024
+        dataset.input_dim = 3072
         dataset.input_type = "binary"
 
         dataset.sample_plot = None
-        dataset.regeneration_plot = None
+        dataset.regeneration_plot = visualization.cifar10_regeneration_plot
 
         return dataset
 
@@ -191,10 +213,11 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset = spiral(**args)
     elif datagroup == "mnist":
         dataset = mnist(**args)
+    elif datagroup == "hhar":
+        dataset = hhar(**args)
     elif datagroup == "cifar10":
         dataset = cifar10(**args)
     else:
-        print(datagroup)
         raise NotImplementedError
 
     if classification:
