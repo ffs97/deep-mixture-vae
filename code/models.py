@@ -8,7 +8,7 @@ from base_models import DeepMixtureVAE, VaDE
 
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1):
         self.name = name
 
         self.input_dim = input_dim
@@ -24,6 +24,7 @@ class MoE:
         self.initializer = initializer
 
         self.vae = None
+        self.featLearn = featLearn
         self.lossVAE = lossVAE
 
     def _define_vae(self):
@@ -52,20 +53,35 @@ class MoE:
                 initializer=tf.initializers.zeros,
                 shape=(self.output_dim, self.n_experts)
             )
-            self.regression_weights = tf.get_variable(
-                "regression_weights", dtype=tf.float32,
-                initializer=tf.initializers.random_normal,
-                shape=(self.n_experts, self.output_dim, self.input_dim)
-            )
+            if self.featLearn:
+                self.regression_weights = tf.get_variable(
+                    "regression_weights", dtype=tf.float32,
+                    initializer=tf.initializers.random_normal,
+                    shape=(self.n_experts, self.output_dim, self.latent_dim)
+                )
+            else:
+                self.regression_weights = tf.get_variable(
+                    "regression_weights", dtype=tf.float32,
+                    initializer=tf.initializers.random_normal,
+                    shape=(self.n_experts, self.output_dim, self.input_dim)
+                )
 
             self.expert_probs = self.vae.cluster_weights#tf.nn.softmax(self.logits)
 
-            expert_predictions = tf.transpose(tf.matmul(
-                self.regression_weights,
-                tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
-                )
-            )) + self.regression_biases
+            if self.featLearn:
+                expert_predictions = tf.transpose(tf.matmul(
+                    self.regression_weights,
+                    tf.tile(
+                        tf.transpose(self.Z)[None, :, :], [self.n_experts, 1, 1]
+                    )
+                )) + self.regression_biases
+            else:
+                expert_predictions = tf.transpose(tf.matmul(
+                    self.regression_weights,
+                    tf.tile(
+                        tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
+                    )
+                )) + self.regression_biases
 
             if self.classification:
                 expert_class_probs = tf.nn.softmax(
@@ -219,7 +235,7 @@ class MoE:
 class DeepMoE(MoE):
     def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None):
         MoE.__init__(self, name, input_type, input_dim, 1, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer, lossVAE=0)
+                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=0)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
@@ -229,9 +245,9 @@ class DeepMoE(MoE):
             ).build_graph()
 
 class DeepVariationalMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
@@ -242,9 +258,9 @@ class DeepVariationalMoE(MoE):
 
 
 class VaDEMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:

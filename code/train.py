@@ -5,6 +5,7 @@ import base_models
 import numpy as np
 import tensorflow as tf
 import matplotlib as mpl
+from visdom import Visdom
 
 from tqdm import tqdm
 
@@ -75,6 +76,11 @@ parser.add_argument("--save_epochs", type=int, default=10,
 parser.add_argument("--debug", action="store_true", default=False,
                     help="Whether to debug the models or not")
 
+parser.add_argument("--visdom", action="store_true", default=False,
+                    help="Using visdom for plotting")
+
+parser.add_argument("--featLearn", action="store_true", default=False,
+                    help="Whether to use feature learning in MOE")
 
 def main(argv):
     dataset = argv.dataset
@@ -135,13 +141,13 @@ def main(argv):
         elif model_str == "dvmoe":
             model = models.DeepVariationalMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
-                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
 
         elif model_str == "vademoe":
             model = models.VaDEMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
-                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
 
         test_data = (
@@ -222,11 +228,25 @@ def main(argv):
     except:
         print("Could not load trained model")
 
+    if argv.visdom:
+        #######  Preparation  ############
+        viz = Visdom()
+        options=dict(
+                    ytickmin=90,
+                    ytickmax=100,
+                    xlabel='This X Label',
+                    ylabel='This Y Label',
+                    title='The Title',
+                )
+        ##################################
+
+
     with tqdm(range(n_epochs), postfix={"loss": "inf", "accTrain": "0.00%", "accTest": "0.00%"}) as bar:
         accuracy = 0.0
-        max_accuracy = 0.0
+        maxAcc = 0.0
 
         for epoch in bar:
+            # import pdb;pdb.set_trace()
             if plotting and epoch % plot_epochs == 0:
                 if dataset.sample_plot is not None:
                     dataset.sample_plot(model, sess)
@@ -235,11 +255,6 @@ def main(argv):
                     dataset.regeneration_plot(model, test_data, sess)
 
             if epoch % save_epochs == 0:
-                accuracy = model.get_accuracy(sess, test_data)
-                if accuracy > max_accuracy:
-                    max_accuracy = accuracy
-                    saver.save(sess, ckpt_path)
-
                 if debug:
                     model.debug(sess, train_data)
 
@@ -251,10 +266,26 @@ def main(argv):
 
             accTest = model.get_accuracy(sess, test_data)
 
+            if accTest > maxAcc:
+                maxAcc = accTest
+                saver.save(sess, ckpt_path)
+
+
+            if argv.visdom:
+                if epoch % 100 == 0:
+                    ################## To Refresh after some time ##################
+                    win = viz.line(X=np.arange(epoch, epoch +.1), Y=np.arange(0, .1))
+
+                accTest_old, accTrain_old = accTest, accTrain
+                if epoch > 0:
+                    viz.line(X=np.linspace(epoch-1, epoch,50), Y=np.linspace(accTrain_old, accTrain,50), name='1', update='append', win=win, opts=options)
+                    viz.line(X=np.linspace(epoch-1, epoch,50), Y=np.linspace(accTest_old, accTest,50), name='2', update='append', win=win, opts=options)
+
             bar.set_postfix({
                 "loss": "%.4f" % loss,
                 "accTrain": "%.4f" % accTrain,
-                "accTest" : "%.4f" % accTest 
+                "accTest" : "%.4f" % accTest,  
+                "maxAcc" : "%.4f" % maxAcc,  
             })
 
     if plotting:
