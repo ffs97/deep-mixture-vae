@@ -162,43 +162,54 @@ class DeepMixtureVAE(VAE):
 
             with tf.variable_scope("encoder_network"):
                 # Make this generic
-                X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
+                # X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
 
                 # Make this configurable
+                # encoder_network = DeepNetwork(
+                #     "layers",
+                #     [
+                #         ("cn", {
+                #             "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                #         }),
+                #         ("cn", {
+                #             "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                #         }),
+                #         ("mp", {"k": 2}),
+                #         ("cn", {
+                #             "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
+                #         }),
+                #         ("cn", {
+                #             "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                #         }),
+                #         ("mp", {"k": 2}),
+                #         ("cn", {
+                #             "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
+                #         }),
+                #         ("cn", {
+                #             "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                #         }),
+                #         ("mp", {"k": 2}),
+                #         ("fc", {"input_dim": 2048, "output_dim": 128})
+                #     ],
+                #     # Following for fast testing
+                #     # [
+                #     #     ("cn", {
+                #     #         "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                #     #     }),
+                #     #     ("mp", {"k": 5}),
+                #     #     ("fc", {"input_dim": 1152, "output_dim": 128})
+                #     # ],
+                #     activation=self.activation,
+                #     initializer=self.initializer
+                # )
+                X_flat = tf.reshape(self.X, (-1, 2000))
                 encoder_network = DeepNetwork(
                     "layers",
                     [
-                        ("cn", {
-                            "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
-                        }),
-                        ("cn", {
-                            "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
-                        }),
-                        ("mp", {"k": 2}),
-                        ("cn", {
-                            "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
-                        }),
-                        ("cn", {
-                            "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
-                        }),
-                        ("mp", {"k": 2}),
-                        ("cn", {
-                            "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
-                        }),
-                        ("cn", {
-                            "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
-                        }),
-                        ("mp", {"k": 2}),
-                        ("fc", {"input_dim": 2048, "output_dim": 128})
+                        ("fc", {"input_dim": 2000, "output_dim": 2000}),
+                        ("fc", {"input_dim": 2000, "output_dim": 500}),
+                        ("fc", {"input_dim": 500, "output_dim": 500})
                     ],
-                    # Following for fast testing
-                    # [
-                    #     ("cn", {
-                    #         "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
-                    #     }),
-                    #     ("mp", {"k": 5}),
-                    #     ("fc", {"input_dim": 1152, "output_dim": 128})
-                    # ],
                     activation=self.activation,
                     initializer=self.initializer
                 )
@@ -243,9 +254,9 @@ class DeepMixtureVAE(VAE):
                 decoder_network = DeepNetwork(
                     "layers",
                     [
-                        ("fc", {"input_dim": self.latent_dim, "output_dim": 128}),
-                        ("fc", {"input_dim": 128, "output_dim": 256}),
-                        ("fc", {"input_dim": 256, "output_dim": 512})
+                        ("fc", {"input_dim": 500, "output_dim": 500}),
+                        ("fc", {"input_dim": 500, "output_dim": 2000}),
+                        ("fc", {"input_dim": 2000, "output_dim": 4})
                     ],
                     activation=self.activation,
                     initializer=self.initializer
