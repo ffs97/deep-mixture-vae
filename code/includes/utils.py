@@ -3,7 +3,7 @@ import numpy as np
 import pickle as pkl
 import scipy.sparse as sp
 
-# from includes import visualization
+from includes import visualization
 from sklearn.utils.linear_assignment_ import linear_assignment
 
 
@@ -191,6 +191,7 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         import os
         from sklearn.feature_extraction.text import CountVectorizer
         from sklearn.feature_extraction.text import TfidfTransformer
+        from sklearn.preprocessing import normalize
 
         did_to_cat = {}
         cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']
@@ -247,6 +248,7 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         p = np.random.permutation(X.shape[0])
         X = X[p]
         Y = Y[p]
+        X = normalize(X, axis=1)
 
         split = int(0.8 * len(X))
         X_train, X_test = X[: split], X[split: ]
