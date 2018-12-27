@@ -47,7 +47,7 @@ parser.add_argument("--n_epochs", type=int, default=500,
                     help="Number of epochs for training the model")
 parser.add_argument("--pretrain_epochs_vae", type=int, default=200,
                     help="Number of epochs for pretraining the vae model")
-parser.add_argument("--pretrain_epochs_gmm", type=int, default=200,
+parser.add_argument("--pretrain_epochs_prior", type=int, default=200,
                     help="Number of epochs for pretraining the gmm model")
 
 parser.add_argument("--init_lr", type=float, default=0.002,
@@ -57,12 +57,15 @@ parser.add_argument("--decay_rate", type=float, default=0.9,
 parser.add_argument("--decay_epochs", type=int, default=25,
                     help="Number of epochs between exponentially decay of learning rate")
 
-parser.add_argument("--pretrain_init_lr", type=float, default=0.002,
-                    help="Initial learning rate for pretraining")
+parser.add_argument("--pretrain_vae_lr", type=float, default=0.0005,
+                    help="Initial learning rate for pretraining the vae")
 parser.add_argument("--pretrain_decay_rate", type=float, default=0.9,
                     help="Decay rate for exponentially decaying learning rate (< 1.0) for pretraining")
 parser.add_argument("--pretrain_decay_epochs", type=int, default=25,
                     help="Number of epochs between exponentially decay of learning rate for pretraining")
+
+parser.add_argument("--pretrain_prior_lr", type=float, default=0.0005,
+                    help="Initial learning rate for pretraining the prior")
 
 parser.add_argument("--plotting", action="store_true", default=False,
                     help="Whether to generate sampling and regeneration plots")
@@ -97,15 +100,17 @@ def main(argv):
     decay_rate = argv.decay_rate
     decay_epochs = argv.decay_epochs
 
-    pretrain_init_lr = argv.pretrain_init_lr
-    pretrain_decay_rate = argv.pretrain_decay_rate
-    pretrain_decay_epochs = argv.pretrain_decay_epochs
+    pretrain_vae_lr = argv.pretrain_vae_lr
+    pretrain_prior_lr = argv.pretrain_prior_lr
 
     moe = model_str[-3:] == "moe"
 
     n_epochs = argv.n_epochs
     pretrain_epochs_vae = argv.pretrain_epochs_vae
-    pretrain_epochs_gmm = argv.pretrain_epochs_gmm
+    pretrain_epochs_prior = argv.pretrain_epochs_prior
+
+    pretrain_decay_rate = argv.pretrain_decay_rate
+    pretrain_decay_epochs = argv.pretrain_decay_epochs
 
     dataset = load_data(
         dataset, classification=classification, output_dim=output_dim
@@ -190,10 +195,14 @@ def main(argv):
     model.define_train_step(
         init_lr, train_data.epoch_len * decay_epochs, decay_rate)
 
-    if model_str in ["vade", "dvmoe", "vademoe"]:
+    if model_str in ["dvmoe", "vademoe"]:
         model.define_pretrain_step(
-            pretrain_init_lr, train_data.epoch_len *
+            pretrain_vae_lr, train_data.epoch_len *
             pretrain_decay_epochs, pretrain_decay_rate
+        )
+    elif model_str in ["dmvae", "vade"]:
+        model.define_pretrain_step(
+            pretrain_vae_lr, pretrain_prior_lr
         )
 
     model.path = "saved_models/%s/%s" % (dataset.datagroup, model.name)
@@ -208,9 +217,9 @@ def main(argv):
         model.pretrain(
             sess, train_data, pretrain_epochs_vae
         )
-    elif model_str in ["vade"]:
+    elif model_str in ["dmvae", "vade"]:
         model.pretrain(
-            sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
+            sess, train_data, pretrain_epochs_vae, pretrain_epochs_prior
         )
 
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
