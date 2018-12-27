@@ -54,34 +54,26 @@ class MoE:
                 shape=(self.output_dim, self.n_experts)
             )
             if self.featLearn:
-                self.regression_weights = tf.get_variable(
-                    "regression_weights", dtype=tf.float32,
-                    initializer=tf.initializers.random_normal,
-                    shape=(self.n_experts, self.output_dim, self.latent_dim)
-                )
+                input_dim = self.latent_dim
+                inp2cls = tf.nn.relu(self.Z)
             else:
-                self.regression_weights = tf.get_variable(
-                    "regression_weights", dtype=tf.float32,
-                    initializer=tf.initializers.random_normal,
-                    shape=(self.n_experts, self.output_dim, self.input_dim)
+                input_dim = self.input_dim
+                inp2cls = self.X
+
+            self.regression_weights = tf.get_variable(
+                "regression_weights", dtype=tf.float32,
+                initializer=tf.initializers.random_normal,
+                shape=(self.n_experts, self.output_dim, input_dim)
+            )
+
+            self.expert_probs = self.vae.cluster_weights
+
+            expert_predictions = tf.transpose(tf.matmul(
+                self.regression_weights,
+                tf.tile(
+                    tf.transpose(inp2cls)[None, :, :], [self.n_experts, 1, 1]
                 )
-
-            self.expert_probs = self.vae.cluster_weights#tf.nn.softmax(self.logits)
-
-            if self.featLearn:
-                expert_predictions = tf.transpose(tf.matmul(
-                    self.regression_weights,
-                    tf.tile(
-                        tf.transpose(self.Z)[None, :, :], [self.n_experts, 1, 1]
-                    )
-                )) + self.regression_biases
-            else:
-                expert_predictions = tf.transpose(tf.matmul(
-                    self.regression_weights,
-                    tf.tile(
-                        tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
-                    )
-                )) + self.regression_biases
+            )) + self.regression_biases
 
             if self.classification:
                 expert_class_probs = tf.nn.softmax(

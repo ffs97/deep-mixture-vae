@@ -211,9 +211,21 @@ class DeepMixtureVAE(VAE):
                     hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
                 )
 
-                self.logits = tf.layers.dense(
-                    hidden, self.n_classes, activation=None, kernel_initializer=self.initializer()
+                self.c_encoder_network = FeedForwardNetwork(
+                    name="c/encoder_network",
+                    activation=self.activation,
+                    initializer=self.initializer,
+                    dropout=self.dropout_c
                 )
+
+                self.logits = self.c_encoder_network.build(
+                    [("logits", self.n_classes)],
+                    [256, 512], self.X
+                )
+
+                # self.logits = tf.layers.dense(
+                #     hidden, self.n_classes, activation=None, kernel_initializer=self.initializer()
+                # )
                 self.cluster_weights = tf.nn.softmax(self.logits)
 
             self.latent_variables.update({
@@ -290,7 +302,7 @@ class VaDE(VAE):
 
         self.n_classes = n_classes
 
-    def build_graph(self):#, encoder_layer_sizes, decoder_layer_sizes):
+    def build_graph(self):
         with tf.variable_scope(self.name) as _:
             self.X = tf.placeholder(
                 tf.float32, shape=(None, self.input_dim), name="X"
@@ -340,11 +352,6 @@ class VaDE(VAE):
                 )
             hidden = encoder_network(X_flat)
 
-            # self.mean, self.log_var = self.encoder_network.build(
-            #    [("mean", self.latent_dim),
-            #     ("log_var", self.latent_dim)],
-            #    encoder_layer_sizes["Z"], self.X
-            #)
             self.mean = tf.layers.dense(
                     hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
                 )
