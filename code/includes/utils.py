@@ -3,7 +3,7 @@ import numpy as np
 import pickle as pkl
 import scipy.sparse as sp
 
-from includes import visualization
+# from includes import visualization
 from sklearn.utils.linear_assignment_ import linear_assignment
 
 
@@ -188,6 +188,7 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         return dataset
 
     def reuters(dir="data/reuters"):
+        import os
         from sklearn.feature_extraction.text import CountVectorizer
         from sklearn.feature_extraction.text import TfidfTransformer
 
@@ -203,7 +204,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
                     did_to_cat[did] = did_to_cat.get(did, []) + [cat]
 
         # remove docs with multi labels
-        for did in did_to_cat.keys():
+        keys = [i for i in did_to_cat.keys()]
+        for did in keys:
             if len(did_to_cat[did]) > 1:
                 del did_to_cat[did]
 
@@ -218,13 +220,15 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         cat_to_cid = {'CCAT':0, 'GCAT':1, 'MCAT':2, 'ECAT':3}
         del did
 
+        doc = ''
         for dat in dat_list:
             with open(os.path.join(dir, dat)) as fin:
                 for line in fin.readlines():
                     if line.startswith('.I'):
                         if 'did' in locals():
-                            assert doc != ''
-                            if did_to_cat.has_key(did):
+                            if doc == '':
+                                continue
+                            if did in did_to_cat.keys():
                                 data.append(doc)
                                 target.append(cat_to_cid[did_to_cat[did][0]])
                         did = int(line.strip().split(' ')[1])
@@ -233,8 +237,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
                         assert doc == ''
                     else:
                         doc += line
-
-        assert len(data) == len(did_to_cat)
 
         X = CountVectorizer(dtype=np.float64, max_features=2000).fit_transform(data)
         Y = np.asarray(target)
@@ -246,9 +248,32 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         X = X[p]
         Y = Y[p]
 
-        # reuters: X, Y
-        # reuter10k: X[:N], Y[:N] where N = 10000
+        split = int(0.8 * len(X))
+        X_train, X_test = X[: split], X[split: ]
+        Y_train, Y_test = Y[: split], Y[split: ]
 
+        class ReutersDataset:
+            pass
+
+        dataset = ReutersDataset()
+
+        dataset.datagroup = "reuters"
+
+        dataset.test_data = X_test
+        dataset.test_classes = Y_test
+
+        dataset.train_data = X_train
+        dataset.train_classes = Y_train
+
+        dataset.n_classes = 4
+
+        dataset.input_dim = 2000
+        dataset.input_type = "binary"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = None
+
+        return dataset
 
     if datagroup == "spiral":
         dataset = spiral(**args)
@@ -363,3 +388,6 @@ class Dataset:
 
     def __len__(self):
         return self.epoch_len
+
+if __name__ == "__main__":
+    load_data("reuters")
