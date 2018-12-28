@@ -56,6 +56,8 @@ class MoE:
             if self.featLearn:
                 input_dim = self.latent_dim
                 inp2cls = tf.nn.relu(self.Z)
+                # inp2cls = tf.nn.relu(self.vae.mean)
+                print("="*100)
             else:
                 input_dim = self.input_dim
                 inp2cls = self.X
@@ -142,7 +144,7 @@ class MoE:
         if self.classification:
             self.recon_loss = -tf.reduce_mean(tf.reduce_sum(
                 self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
-            ))
+            ))*1000.0
         else:
             self.recon_loss = 0.5 * tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
@@ -185,6 +187,7 @@ class MoE:
         assert(self.train_step is not None)
 
         loss = 0.0
+        lossCls = 0.0
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -194,11 +197,11 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            batch_error, batch_loss, _ = session.run(
-                [self.error, self.loss, self.train_step],
+            batch_error, batch_loss, _, batch_lossCls = session.run(
+                [self.error, self.loss, self.train_step, self.recon_loss],
                 feed_dict=feed
             )
-
+            lossCls +=  batch_lossCls / data.epoch_len
             loss += batch_loss / data.epoch_len
 
         if self.classification:
@@ -206,7 +209,7 @@ class MoE:
         else:
            batch_acc = - batch_error
         
-        return loss, batch_acc
+        return loss, batch_acc, lossCls
 
     def debug(self, session, data):
         import pdb
@@ -225,9 +228,9 @@ class MoE:
             break
 
 class DeepMoE(MoE):
-    def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=0):
         MoE.__init__(self, name, input_type, input_dim, 1, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=0)
+                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:

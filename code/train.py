@@ -134,7 +134,7 @@ def main(argv):
         if model_str == "dmoe":
             model = models.DeepMoE(
                 model_str, dataset.input_type, dataset.input_dim, output_dim, n_experts, classification,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
             plotting = False
 
@@ -259,7 +259,7 @@ def main(argv):
                     model.debug(sess, train_data)
 
             if moe:
-                loss, accTrain = model.train_op(sess, train_data)
+                loss, accTrain, lossCls = model.train_op(sess, train_data)
             else:
                 loss = model.train_op(sess, train_data)
                 accTrain = model.get_accuracy(sess, train_data)
@@ -286,6 +286,7 @@ def main(argv):
                 "accTrain": "%.4f" % accTrain,
                 "accTest" : "%.4f" % accTest,  
                 "maxAcc" : "%.4f" % maxAcc,  
+                "lossCls" : "%.4f" % lossCls,
             })
 
     if plotting:

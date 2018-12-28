@@ -228,6 +228,7 @@ class DeepMixtureVAE(VAE):
                 # )
                 self.cluster_weights = tf.nn.softmax(self.logits)
 
+
             self.latent_variables.update({
                 "C": (
                     priors.DiscreteFactorial(
