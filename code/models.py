@@ -55,8 +55,9 @@ class MoE:
             )
             if self.featLearn:
                 input_dim = self.latent_dim
-                inp2cls = tf.nn.relu(self.Z)
-                # inp2cls = tf.nn.relu(self.vae.mean)
+                # inp2cls = tf.nn.relu(self.Z)
+                inp2cls = tf.nn.relu(self.vae.mean)
+                # self.reconstructed_Y_soft = self.vae.reconstructed_Y_soft
                 print("="*100)
             else:
                 input_dim = self.input_dim

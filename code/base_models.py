@@ -204,6 +204,10 @@ class DeepMixtureVAE(VAE):
                 )
                 hidden = encoder_network(X_flat)
 
+                self.reconstructed_Y_soft = tf.layers.dense(
+                    hidden, 10, activation=tf.nn.softmax, kernel_initializer=self.initializer()
+                )
+
                 self.mean = tf.layers.dense(
                     hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
                 )
