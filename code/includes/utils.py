@@ -209,67 +209,85 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         return dataset
 
-    def reuters(dir="data/reuters"):
+    def reuters(dir="data/reuters", use10k=False, cache=True):
         import os
         from sklearn.feature_extraction.text import CountVectorizer
         from sklearn.feature_extraction.text import TfidfTransformer
 
-        did_to_cat = {}
-        cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']
+        X_path = os.path.join(dir, "reuters_X.npy")
+        Y_path = os.path.join(dir, "reuters_Y.npy")
 
-        with open(os.path.join(dir, 'rcv1-v2.topics.qrels')) as fin:
-            for line in fin.readlines():
-                line = line.strip().split(' ')
-                cat = line[0]
-                did = int(line[1])
-                if cat in cat_list:
-                    did_to_cat[did] = did_to_cat.get(did, []) + [cat]
+        if cache and os.path.exists(X_path) and os.path.exists(Y_path):
+            # cache if possible
+            X = np.load(X_path)
+            Y = np.load(Y_path)
+        else:
+            did_to_cat = {}
+            cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']
 
-        # remove docs with multi labels
-        keys = [i for i in did_to_cat.keys()]
-        for did in keys:
-            if len(did_to_cat[did]) > 1:
-                del did_to_cat[did]
-
-        dat_list = ['lyrl2004_tokens_test_pt0.dat',
-                'lyrl2004_tokens_test_pt1.dat',
-                'lyrl2004_tokens_test_pt2.dat',
-                'lyrl2004_tokens_test_pt3.dat',
-                'lyrl2004_tokens_train.dat']
-
-        data = []
-        target = []
-        cat_to_cid = {'CCAT':0, 'GCAT':1, 'MCAT':2, 'ECAT':3}
-        del did
-
-        doc = ''
-        for dat in dat_list:
-            with open(os.path.join(dir, dat)) as fin:
+            with open(os.path.join(dir, 'rcv1-v2.topics.qrels')) as fin:
                 for line in fin.readlines():
-                    if line.startswith('.I'):
-                        if 'did' in locals():
-                            if doc == '':
-                                continue
-                            if did in did_to_cat.keys():
-                                data.append(doc)
-                                target.append(cat_to_cid[did_to_cat[did][0]])
-                        did = int(line.strip().split(' ')[1])
-                        doc = ''
-                    elif line.startswith('.W'):
-                        assert doc == ''
-                    else:
-                        doc += line
+                    line = line.strip().split(' ')
+                    cat = line[0]
+                    did = int(line[1])
+                    if cat in cat_list:
+                        did_to_cat[did] = did_to_cat.get(did, []) + [cat]
 
-        X = CountVectorizer(dtype=np.float64, max_features=2000).fit_transform(data)
-        Y = np.asarray(target)
+            # remove docs with multi labels
+            keys = [i for i in did_to_cat.keys()]
+            for did in keys:
+                if len(did_to_cat[did]) > 1:
+                    del did_to_cat[did]
 
-        X = TfidfTransformer(norm='l2', sublinear_tf=True).fit_transform(X)
-        X = np.asarray(X.todense()) * np.sqrt(X.shape[1])
+            dat_list = ['lyrl2004_tokens_test_pt0.dat',
+                    'lyrl2004_tokens_test_pt1.dat',
+                    'lyrl2004_tokens_test_pt2.dat',
+                    'lyrl2004_tokens_test_pt3.dat',
+                    'lyrl2004_tokens_train.dat']
 
-        p = np.random.permutation(X.shape[0])
-        X = X[p]
-        Y = Y[p]
+            data = []
+            target = []
+            cat_to_cid = {'CCAT':0, 'GCAT':1, 'MCAT':2, 'ECAT':3}
+            del did
 
+            doc = ''
+            for dat in dat_list:
+                with open(os.path.join(dir, dat)) as fin:
+                    for line in fin.readlines():
+                        if line.startswith('.I'):
+                            if 'did' in locals():
+                                if doc == '':
+                                    continue
+                                if did in did_to_cat.keys():
+                                    data.append(doc)
+                                    target.append(cat_to_cid[did_to_cat[did][0]])
+                            did = int(line.strip().split(' ')[1])
+                            doc = ''
+                        elif line.startswith('.W'):
+                            assert doc == ''
+                        else:
+                            doc += line
+
+            X = CountVectorizer(dtype=np.float64, max_features=2000).fit_transform(data)
+            Y = np.asarray(target)
+
+            X = TfidfTransformer(norm='l2', sublinear_tf=True).fit_transform(X)
+            X = np.asarray(X.todense()) * np.sqrt(X.shape[1])
+
+            p = np.random.permutation(len(X))
+            X = X[p]
+            Y = Y[p]
+
+            # save the loaded data for caching
+            np.save(X_path, X)
+            np.save(Y_path, Y)
+
+        if use10k:
+            # use only 10000 points
+            X = X[:10000]
+            Y = Y[:10000]
+
+        print([i for i in X[0] if i > 1])
         split = int(0.8 * len(X))
         X_train, X_test = X[: split], X[split: ]
         Y_train, Y_test = Y[: split], Y[split: ]
@@ -307,6 +325,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset = cifar10(**args)
     elif datagroup == "reuters":
         dataset = reuters(**args)
+    elif datagroup == "reuters10k":
+        dataset = reuters(use10k=True, **args)
     else:
         raise NotImplementedError
 
