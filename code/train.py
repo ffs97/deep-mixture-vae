@@ -293,6 +293,9 @@ def main(argv):
         dataset.sample_plot(model, sess)
         dataset.regeneration_plot(model, test_data, sess)
 
+    fl = open(argv.model + '_logs.txt', 'a+')
+    fl.write('\n' + str(argv) + '\n------\n') 
+    fl.write('Max Accuracy        ' + str(maxAcc) + '\n============')
 
 if __name__ == "__main__":
     args = parser.parse_args()
