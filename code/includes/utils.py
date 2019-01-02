@@ -160,8 +160,13 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         X = data["X"]
         Y = data["Y"] - 1
 
-        train_data, test_data = np.split(X, [8100], axis=0)
-        train_classes, test_classes = np.split(Y, [8100], axis=0)
+        p = np.random.permutation(X.shape[0])
+        X = X[p]
+        Y = Y[p]
+
+        split = int(0.8 * len(X))
+        train_data, test_data = X[:split], X[split:]
+        train_classes, test_classes = Y[:split], Y[split:]
 
         dataset.datagroup = "hhar"
 
@@ -267,13 +272,15 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         X = TfidfTransformer(norm='l2', sublinear_tf=True).fit_transform(X)
         X = np.asarray(X.todense()) * np.sqrt(X.shape[1])
 
+        X = 2 * (X - X.min(0)) / (X.max(0) - X.min(0)) - 1
+
         p = np.random.permutation(X.shape[0])
         X = X[p]
         Y = Y[p]
 
         split = int(0.8 * len(X))
-        X_train, X_test = X[: split], X[split:]
-        Y_train, Y_test = Y[: split], Y[split:]
+        train_data, test_data = X[:split], X[split:]
+        train_classes, test_classes = Y[:split], Y[split:]
 
         class ReutersDataset:
             pass
@@ -282,11 +289,54 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         dataset.datagroup = "reuters"
 
-        dataset.test_data = X_test
-        dataset.test_classes = Y_test
+        dataset.test_data = test_data
+        dataset.test_classes = test_classes
 
-        dataset.train_data = X_train
-        dataset.train_classes = Y_train
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
+
+        dataset.n_classes = 4
+
+        dataset.input_dim = 2000
+        dataset.input_type = "real"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = None
+
+        return dataset
+
+    def reuters10k(dir="data/reuters", filename="reuters10k.mat"):
+        import scipy.io as scio
+
+        class Reuters10KDataset:
+            pass
+
+        dataset = Reuters10KDataset()
+
+        data = scio.loadmat(dir + "/" + filename)
+
+        X = data["X"]
+        Y = data["Y"]
+
+        X = 2 * (X - X.min(0)) / (X.max(0) - X.min(0)) - 1Z
+
+        p = np.random.permutation(X.shape[0])
+        X = X[p]
+        Y = Y[p]
+
+        split = int(0.8 * len(X))
+        train_data, test_data = X[:split], X[split:]
+        train_classes, test_classes = Y[:split], Y[split:]
+
+        dataset.datagroup = "hhar"
+
+        dataset.datagroup = "reuters"
+
+        dataset.test_data = test_data
+        dataset.test_classes = test_classes
+
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
 
         dataset.n_classes = 4
 
@@ -308,6 +358,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset = cifar10(**args)
     elif datagroup == "reuters":
         dataset = reuters(**args)
+    elif datagroup == "reuters10k":
+        dataset = reuters10k(**args)
     else:
         raise NotImplementedError
 
