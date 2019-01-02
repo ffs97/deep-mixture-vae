@@ -290,7 +290,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         split = int(0.8 * len(X))
         X_train, X_test = X[: split], X[split: ]
         Y_train, Y_test = Y[: split], Y[split: ]
-
         class ReutersDataset:
             pass
 

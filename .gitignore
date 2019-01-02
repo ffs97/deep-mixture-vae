@@ -1,7 +1,5 @@
-*/saved_models/
-*/logs/
-
-*data*
+*/logs/*
+*/data/*
 *.vscode*
 *__pycache__*
 
