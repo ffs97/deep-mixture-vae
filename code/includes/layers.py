@@ -75,3 +75,18 @@ class MaxPooling(Layer):
         )
 
         return outputs
+
+
+class BatchNormalization(Layer):
+    def __init__(self, name, is_training, activation=None, initializer=None):
+        Layer.__init__(self, name, activation=activation,
+                       initializer=initializer)
+
+        self.is_training = is_training
+
+    def _call(self, inputs):
+        outputs = tf.layers.batch_normalization(
+            inputs, training=self.is_training
+        )
+
+        return outputs

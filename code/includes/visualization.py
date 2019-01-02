@@ -128,6 +128,52 @@ def mnist_sample_plot(model, sess, tsne=False):
     plt.close()
 
 
+def cifar10_regeneration_plot(model, data, sess):
+    if not os.path.exists("plots/%s/cifar10" % model.name):
+        os.makedirs("plots/%s/cifar10" % model.name)
+
+    gs = grid.GridSpec(1, 2)
+
+    ax1 = plt.subplot(gs[0])
+    ax2 = plt.subplot(gs[1])
+
+    def reshape(images):
+        images = images.reshape((10, 10, 32, 32, 3))
+        images = np.concatenate(np.split(images, 10, axis=0), axis=3)
+        images = np.concatenate(np.split(images, 10, axis=1), axis=2)
+        images = np.squeeze(images)
+
+        return images
+
+    orig_X = data.data[:100]
+
+    feed = model.sample_reparametrization_variables(len(orig_X))
+    for var in feed:
+        feed[var] = np.zeros(feed[var].shape)
+    feed.update({
+        model.X: orig_X,
+    })
+
+    recn_X = sess.run(model.reconstructed_X, feed_dict=feed)
+
+    ax1.imshow(reshape(orig_X))
+    ax2.imshow(reshape(recn_X))
+
+    ax2.spines['left'].set_visible(False)
+    ax2.spines['bottom'].set_visible(False)
+    ax1.spines['left'].set_visible(False)
+    ax1.spines['bottom'].set_visible(False)
+
+    ax1.get_xaxis().set_visible(False)
+    ax1.get_yaxis().set_visible(False)
+    ax2.get_xaxis().set_visible(False)
+    ax2.get_yaxis().set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig("plots/%s/cifar10/regenerated.png" % model.name)
+    plt.close()
+
+
 def spiral_regeneration_plot(model, data, sess):
     if not os.path.exists("plots/%s/spiral" % model.name):
         os.makedirs("plots/%s/spiral" % model.name)

@@ -1,8 +1,13 @@
+
 */saved_models/
-*/logs/
+
 *.txt
 
 *data*
+
+*/logs/*
+*/data/*
+
 *.vscode*
 *__pycache__*
 
