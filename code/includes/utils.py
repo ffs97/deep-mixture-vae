@@ -316,9 +316,9 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         data = scio.loadmat(dir + "/" + filename)
 
         X = data["X"]
-        Y = data["Y"]
+        Y = data["Y"].reshape(-1)
 
-        X = 2 * (X - X.min(0)) / (X.max(0) - X.min(0)) - 1Z
+        X = 2 * (X - X.min(0)) / (X.max(0) - X.min(0)) - 1
 
         p = np.random.permutation(X.shape[0])
         X = X[p]

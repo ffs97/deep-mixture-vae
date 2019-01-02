@@ -279,7 +279,7 @@ def main(argv):
                 anneal_term = min(anneal_term + anneal_step, 1.0)
 
             bar.set_postfix({
-                "loss": "%.4f" % model.train_op(sess, train_data, ),
+                "loss": "%.4f" % model.train_op(sess, train_data, anneal_term),
                 "acc": "%.4f" % accuracy
             })
 
