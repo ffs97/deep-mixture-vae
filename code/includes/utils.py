@@ -287,7 +287,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
             X = X[:10000]
             Y = Y[:10000]
 
-        print([i for i in X[0] if i > 1])
         split = int(0.8 * len(X))
         X_train, X_test = X[: split], X[split: ]
         Y_train, Y_test = Y[: split], Y[split: ]
