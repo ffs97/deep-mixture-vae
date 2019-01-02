@@ -209,6 +209,95 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         return dataset
 
+    def reuters(dir="data/reuters"):
+        import os
+        from sklearn.feature_extraction.text import CountVectorizer
+        from sklearn.feature_extraction.text import TfidfTransformer
+
+        did_to_cat = {}
+        cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']
+
+        with open(os.path.join(dir, 'rcv1-v2.topics.qrels')) as fin:
+            for line in fin.readlines():
+                line = line.strip().split(' ')
+                cat = line[0]
+                did = int(line[1])
+                if cat in cat_list:
+                    did_to_cat[did] = did_to_cat.get(did, []) + [cat]
+
+        # remove docs with multi labels
+        keys = [i for i in did_to_cat.keys()]
+        for did in keys:
+            if len(did_to_cat[did]) > 1:
+                del did_to_cat[did]
+
+        dat_list = ['lyrl2004_tokens_test_pt0.dat',
+                    'lyrl2004_tokens_test_pt1.dat',
+                    'lyrl2004_tokens_test_pt2.dat',
+                    'lyrl2004_tokens_test_pt3.dat',
+                    'lyrl2004_tokens_train.dat']
+
+        data = []
+        target = []
+        cat_to_cid = {'CCAT': 0, 'GCAT': 1, 'MCAT': 2, 'ECAT': 3}
+        del did
+
+        doc = ''
+        for dat in dat_list:
+            with open(os.path.join(dir, dat)) as fin:
+                for line in fin.readlines():
+                    if line.startswith('.I'):
+                        if 'did' in locals():
+                            if doc == '':
+                                continue
+                            if did in did_to_cat.keys():
+                                data.append(doc)
+                                target.append(cat_to_cid[did_to_cat[did][0]])
+                        did = int(line.strip().split(' ')[1])
+                        doc = ''
+                    elif line.startswith('.W'):
+                        assert doc == ''
+                    else:
+                        doc += line
+
+        X = CountVectorizer(
+            dtype=np.float64, max_features=2000).fit_transform(data)
+        Y = np.asarray(target)
+
+        X = TfidfTransformer(norm='l2', sublinear_tf=True).fit_transform(X)
+        X = np.asarray(X.todense()) * np.sqrt(X.shape[1])
+
+        p = np.random.permutation(X.shape[0])
+        X = X[p]
+        Y = Y[p]
+
+        split = int(0.8 * len(X))
+        X_train, X_test = X[: split], X[split:]
+        Y_train, Y_test = Y[: split], Y[split:]
+
+        class ReutersDataset:
+            pass
+
+        dataset = ReutersDataset()
+
+        dataset.datagroup = "reuters"
+
+        dataset.test_data = X_test
+        dataset.test_classes = Y_test
+
+        dataset.train_data = X_train
+        dataset.train_classes = Y_train
+
+        dataset.n_classes = 4
+
+        dataset.input_dim = 2000
+        dataset.input_type = "real"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = None
+
+        return dataset
+
     if datagroup == "spiral":
         dataset = spiral(**args)
     elif datagroup == "mnist":
@@ -217,6 +306,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset = hhar(**args)
     elif datagroup == "cifar10":
         dataset = cifar10(**args)
+    elif datagroup == "reuters":
+        dataset = reuters(**args)
     else:
         raise NotImplementedError
 

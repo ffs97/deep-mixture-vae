@@ -88,7 +88,7 @@ class NormalMixtureFactorial(LatentVariable):
 
         return parameters["mean"] + tf.exp(parameters["log_var"] / 2) * epsilon
 
-    def get_cluster_weights(self, Z):
+    def get_cluster_probs(self, Z):
         Z = Z[:, None, :]
 
         means = self.means[None, :, :]
@@ -181,10 +181,16 @@ class DiscreteFactorial(LatentVariable):
         return res
 
     def kl_from_prior(self, parameters, eps=1e-20):
-        assert("logits" in parameters)
 
-        logits = tf.reshape(parameters["logits"], (-1, self.n_classes))
-        q_z = tf.nn.softmax(logits)
+        if "logits" in parameters:
+            logits = tf.reshape(parameters["logits"], (-1, self.n_classes))
+            q_z = tf.nn.softmax(logits)
+
+        elif "probs" in parameters:
+            q_z = tf.reshape(parameters["probs"], (-1, self.n_classes))
+
+        else:
+            assert(False)
 
         res = tf.reshape(
             q_z * (tf.log(q_z + eps) - tf.log(1.0 / self.n_classes)),
