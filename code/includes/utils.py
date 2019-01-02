@@ -213,7 +213,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         import os
         from sklearn.feature_extraction.text import CountVectorizer
         from sklearn.feature_extraction.text import TfidfTransformer
-        from sklearn.preprocessing import normalize
 
         did_to_cat = {}
         cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']
@@ -237,7 +236,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
                 'lyrl2004_tokens_test_pt2.dat',
                 'lyrl2004_tokens_test_pt3.dat',
                 'lyrl2004_tokens_train.dat']
-        dat_list = ['lyrl2004_tokens_train.dat']
 
         data = []
         target = []
