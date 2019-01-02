@@ -232,11 +232,12 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
             if len(did_to_cat[did]) > 1:
                 del did_to_cat[did]
 
-        dat_list = ['lyrl2004_vectors_test_pt0.dat',
-                'lyrl2004_vectors_test_pt1.dat',
-                'lyrl2004_vectors_test_pt2.dat',
-                'lyrl2004_vectors_test_pt3.dat',
-                'lyrl2004_vectors_train.dat']
+        dat_list = ['lyrl2004_tokens_test_pt0.dat',
+                'lyrl2004_tokens_test_pt1.dat',
+                'lyrl2004_tokens_test_pt2.dat',
+                'lyrl2004_tokens_test_pt3.dat',
+                'lyrl2004_tokens_train.dat']
+        dat_list = ['lyrl2004_tokens_train.dat']
 
         data = []
         target = []
@@ -270,7 +271,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         p = np.random.permutation(X.shape[0])
         X = X[p]
         Y = Y[p]
-        X = normalize(X, axis=1)
 
         split = int(0.8 * len(X))
         X_train, X_test = X[: split], X[split: ]
@@ -292,7 +292,7 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 4
 
         dataset.input_dim = 2000
-        dataset.input_type = "binary"
+        dataset.input_type = "real"
 
         dataset.sample_plot = None
         dataset.regeneration_plot = None

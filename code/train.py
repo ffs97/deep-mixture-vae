@@ -176,7 +176,7 @@ def main(argv):
                 model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph(
-                {"Z": [512, 256, 256]}, [256, 256, 512]
+                {"Z": [2000, 500, 500]}, [500, 500, 2000]
             )
 
         dataset.train_data = np.concatenate(
@@ -266,6 +266,7 @@ def main(argv):
                 "accTest" : "%.4f" % accTest 
             })
 
+    print("**** %.5f *****" % max_accuracy)
     if plotting:
         dataset.sample_plot(model, sess)
         dataset.regeneration_plot(model, test_data, sess)
