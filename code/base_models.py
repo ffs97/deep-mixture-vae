@@ -148,11 +148,12 @@ class VAE:
 
 
 class DeepMixtureVAE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
+        self.cnn = cnn
 
     def build_graph(self):
         with tf.variable_scope(self.name) as _:
@@ -171,29 +172,59 @@ class DeepMixtureVAE(VAE):
             # DMVAE  - shared    1   nbn   pretrained   ->   Working???? (gpu - dmvae, 94.86)
 
             with tf.variable_scope("encoder_network"):
-                # encoder_network = DeepNetwork(
-                #     "layers",
-                #     [
-                #         ("fc", {"input_dim": self.input_dim, "output_dim": 500}),
-                #         ("bn", {"is_training": self.is_training}),
-                #         ("fc", {"input_dim": 500, "output_dim": 500}),
-                #         ("bn", {"is_training": self.is_training}),
-                #         ("fc", {"input_dim": 500, "output_dim": 2000}),
-                #         ("bn", {"is_training": self.is_training})
-                #         # ("fc", {"input_dim": self.input_dim, "output_dim": 256}),
-                #         # ("fc", {"input_dim": 256, "output_dim": 512})
-                #     ],
-                #     activation=self.activation, initializer=self.initializer
-                # )
-                # hidden = encoder_network(self.X)
 
-                hidden = self.X
-                hidden = tf.layers.dense(
-                    hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
-                )
-                hidden = tf.layers.dense(
-                    hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
-                )
+                X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
+
+                if self.cnn:
+                    encoder_network = DeepNetwork(
+                        "layers",
+                        [
+                            ("cn", {
+                                "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                            }),
+                            ("cn", {
+                                "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                            }),
+                            ("mp", {"k": 2}),
+                            ("cn", {
+                                "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
+                            }),
+                            ("cn", {
+                                "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                            }),
+                            ("mp", {"k": 2}),
+                            ("cn", {
+                                "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
+                            }),
+                            ("cn", {
+                                "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                            }),
+                            ("mp", {"k": 2}),
+                            # ("fc", {"input_dim": 2048, "output_dim": 128})
+                        ],
+                        # Following for fast testing
+                        # [
+                        #     ("cn", {
+                        #         "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                        #     }),
+                        #     ("mp", {"k": 5}),
+                        #     ("fc", {"input_dim": 1152, "output_dim": 128})
+                        # ],
+                        activation=self.activation,
+                        initializer=self.initializer
+                    )
+                    hidden = encoder_network(X_flat)
+
+                else:
+
+                    hidden = self.X
+                    hidden = tf.layers.dense(
+                        hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
+                    )
+                    hidden = tf.layers.dense(
+                        hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
+                    )
+
 
                 with tf.variable_scope("z"):
                     hidden_z = tf.layers.dense(

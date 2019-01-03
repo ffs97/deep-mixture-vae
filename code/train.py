@@ -274,10 +274,18 @@ def main(argv):
             if kl_annealing and (epoch + 1) % anneal_epochs == 0:
                 anneal_term = min(anneal_term + anneal_step, 1.0)
 
-            bar.set_postfix({
-                "loss": "%.4f" % model.train_op(sess, train_data, anneal_term),
-                "acc": "%.4f" % accuracy
+            if moe:
+                loss, accTrain = model.train_op(sess, train_data, anneal_term)
+            else:
+                loss = model.train_op(sess, train_data)
+                accTrain = model.get_accuracy(sess, train_data)
 
+            accTest = model.get_accuracy(sess, test_data)
+
+            bar.set_postfix({
+                "loss": "%.4f" % loss,
+                "accTrain": "%.4f" % accTrain,
+                "accTest" : "%.4f" % accTest 
             })
 
     if plotting:
