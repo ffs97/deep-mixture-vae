@@ -8,7 +8,7 @@ from base_models import DeepMixtureVAE, VaDE
 
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1):
         self.name = name
 
         self.input_dim = input_dim
@@ -24,6 +24,7 @@ class MoE:
         self.initializer = initializer
 
         self.vae = None
+        self.featLearn = featLearn
         self.lossVAE = lossVAE
 
     def _define_vae(self):
@@ -43,7 +44,7 @@ class MoE:
                 tf.float32, shape=(None, self.output_dim), name="Y"
             )
 
-            self.logits = self.vae.logits
+            # self.logits = self.vae.logits
 
             self.reconstructed_X = self.vae.reconstructed_X
 
@@ -52,18 +53,28 @@ class MoE:
                 initializer=tf.initializers.zeros,
                 shape=(self.output_dim, self.n_experts)
             )
+            if self.featLearn:
+                input_dim = self.latent_dim
+                # inp2cls = tf.nn.relu(self.Z)
+                inp2cls = tf.nn.relu(self.vae.mean)
+                # self.reconstructed_Y_soft = self.vae.reconstructed_Y_soft
+                print("="*100)
+            else:
+                input_dim = self.input_dim
+                inp2cls = self.X
+
             self.regression_weights = tf.get_variable(
                 "regression_weights", dtype=tf.float32,
                 initializer=tf.initializers.random_normal,
-                shape=(self.n_experts, self.output_dim, self.input_dim)
+                shape=(self.n_experts, self.output_dim, input_dim)
             )
 
-            self.expert_probs = tf.nn.softmax(self.logits)
+            self.expert_probs = self.vae.cluster_weights
 
             expert_predictions = tf.transpose(tf.matmul(
                 self.regression_weights,
                 tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
+                    tf.transpose(inp2cls)[None, :, :], [self.n_experts, 1, 1]
                 )
             )) + self.regression_biases
 
@@ -108,10 +119,15 @@ class MoE:
     def get_accuracy(self, session, data):
         error = 0.0
         for X_batch, Y_batch, _ in data.get_batches():
-            error += session.run(self.error, feed_dict={
+            feed = {
                 self.X: X_batch,
                 self.Y: Y_batch
-            })
+            }
+            feed.update(
+                self.vae.sample_reparametrization_variables(len(X_batch))
+            )
+
+            error += session.run(self.error, feed_dict=feed)
 
         if self.classification:
             error /= data.len
@@ -129,7 +145,7 @@ class MoE:
         if self.classification:
             self.recon_loss = -tf.reduce_mean(tf.reduce_sum(
                 self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
-            ))
+            ))*1000.0
         else:
             self.recon_loss = 0.5 * tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
@@ -172,6 +188,7 @@ class MoE:
         assert(self.train_step is not None)
 
         loss = 0.0
+        lossCls = 0.0
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -181,24 +198,21 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            batch_error, batch_loss, _ = session.run(
-                [self.error, self.loss, self.train_step],
+            batch_error, batch_loss, _, batch_lossCls = session.run(
+                [self.error, self.loss, self.train_step, self.recon_loss],
                 feed_dict=feed
             )
-
-            # import pdb;pdb.set_trace()
+            lossCls +=  batch_lossCls / data.epoch_len
             loss += batch_loss / data.epoch_len
 
-        # import pdb;pdb.set_trace()
         if self.classification:
            batch_acc = 1 - batch_error/Y_batch.shape[0]
         else:
            batch_acc = - batch_error
         
-        return loss, batch_acc
+        return loss, batch_acc, lossCls
 
     def debug(self, session, data):
-        import pdb
 
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
@@ -214,21 +228,21 @@ class MoE:
             break
 
 class DeepMoE(MoE):
-    def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=0):
         MoE.__init__(self, name, input_type, input_dim, 1, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer, lossVAE=0)
+                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
-                "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
+                "null_vae", self.input_type, self.input_dim, self.latent_dim,
                 self.n_experts, activation=self.activation, initializer=self.initializer
             ).build_graph()
 
 class DeepVariationalMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
@@ -239,9 +253,9 @@ class DeepVariationalMoE(MoE):
 
 
 class VaDEMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:

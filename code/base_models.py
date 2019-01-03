@@ -248,6 +248,11 @@ class DeepMixtureVAE(VAE):
                     )
                     self.cluster_probs = tf.nn.softmax(self.logits)
 
+                self.reconstructed_Y_soft = tf.layers.dense(
+                    hidden, 10, activation=tf.nn.softmax, kernel_initializer=self.initializer()
+                )
+
+
             self.latent_variables.update({
                 "C": (
                     priors.DiscreteFactorial(
@@ -428,11 +433,12 @@ class DeepMixtureVAE(VAE):
 
 
 class VaDE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
+        self.cnn = cnn
 
     def build_graph(self):
         with tf.variable_scope(self.name) as _:
@@ -445,8 +451,43 @@ class VaDE(VAE):
 
             self.latent_variables = dict()
 
+            X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
             with tf.variable_scope("encoder_network"):
-                encoder_network = DeepNetwork(
+
+                if self.cnn:
+                    encoder_network = DeepNetwork(
+                        "layers",
+                        [
+                            ("cn", {
+                                "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                            }),
+                            ("cn", {
+                                "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                            }),
+                            ("mp", {"k": 2}),
+                            ("cn", {
+                                "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
+                            }),
+                            ("cn", {
+                                "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                            }),
+                            ("mp", {"k": 2}),
+                            ("cn", {
+                                "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
+                            }),
+                            ("cn", {
+                                "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                            }),
+                            ("mp", {"k": 2}),
+                            ("fc", {"input_dim": 2048, "output_dim": 128})
+                        ],    
+                        activation=self.activation,
+                        initializer=self.initializer
+                    )
+                    hidden = encoder_network(X_flat)
+                else:
+                    
+                    encoder_network = DeepNetwork(
                     "layers",
                     [
                         ("fc", {"input_dim": self.input_dim, "output_dim": 2000}),
@@ -454,8 +495,9 @@ class VaDE(VAE):
                         ("fc", {"input_dim": 500, "output_dim": 500})
                     ],
                     activation=self.activation, initializer=self.initializer
-                )
-                hidden = encoder_network(self.X)
+                    )
+                    hidden = encoder_network(self.X)
+
 
                 with tf.variable_scope("z"):
                     self.mean = tf.layers.dense(
@@ -508,6 +550,7 @@ class VaDE(VAE):
                 self.decoded_X = tf.layers.dense(
                     hidden, self.input_dim, activation=None, kernel_initializer=self.initializer()
                 )
+
 
             if self.input_type == "binary":
                 self.reconstructed_X = tf.nn.sigmoid(self.decoded_X)

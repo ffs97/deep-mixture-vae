@@ -1,6 +1,10 @@
 
 */saved_models/
+<<<<<<< HEAD
 
+=======
+*/logs/
+>>>>>>> moe
 *.txt
 
 *data*
