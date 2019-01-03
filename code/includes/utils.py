@@ -22,8 +22,10 @@ def sample_gumbel(shape, eps=1e-20):
 def get_clustering_accuracy(weights, classes):
     clusters = np.argmax(weights, axis=-1)
 
+    n_classes = weights.shape[1]
+
     size = len(clusters)
-    d = np.zeros((10, 10), dtype=np.int32)
+    d = np.zeros((n_classes, n_classes), dtype=np.int32)
 
     for i in range(size):
         d[clusters[i], classes[i]] += 1
@@ -145,42 +147,201 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         return dataset
 
+    def hhar(dir="data/hhar", filename="hhar.mat"):
+        import scipy.io as scio
+
+        class HHARDataset:
+            pass
+
+        dataset = HHARDataset()
+
+        data = scio.loadmat(dir + "/" + filename)
+
+        X = data["X"]
+        Y = data["Y"] - 1
+
+        p = np.random.permutation(X.shape[0])
+        X = X[p]
+        Y = Y[p]
+
+        split = int(0.8 * len(X))
+        train_data, test_data = X[:split], X[split:]
+        train_classes, test_classes = Y[:split], Y[split:]
+
+        dataset.datagroup = "hhar"
+
+        dataset.test_data = test_data
+        dataset.test_classes = test_classes
+
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
+
+        dataset.n_classes = 6
+
+        dataset.input_dim = 561
+        dataset.input_type = "real"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = None
+
+        return dataset
+
     def cifar10(dir="data/cifar10"):
-        from includes import cifar10
+        from tensorflow.keras.datasets.cifar10 import load_data
 
         class Cifar10Dataset:
             pass
 
         dataset = Cifar10Dataset()
 
-        cifar10.data_path = dir
-
-        cifar10.maybe_download_and_extract()
-
-        test_data, test_classes, _ = cifar10.load_test_data()
-        train_data, train_classes, _ = cifar10.load_training_data()
-
-        test_classes -= 1
-        train_classes -= 1
+        (train_data, train_classes), (test_data, test_classes) = load_data()
 
         dataset.datagroup = "cifar10"
 
         dataset.test_classes = test_classes
-
-        test_data = np.dot(test_data, [0.299, 0.587, 0.114])
-        dataset.test_data = np.reshape(test_data, (-1, 1024))
-        # dataset.test_data = np.reshape(test_data, (-1, 3072))
-
         dataset.train_classes = train_classes
-        train_data = np.dot(train_data, [0.299, 0.587, 0.114])
-        dataset.train_data = np.reshape(train_data, (-1, 1024))
-        # dataset.train_data = np.reshape(train_data, (-1, 3072))
+
+        dataset.test_data = np.reshape(test_data, (-1, 3072)) / 255
+        dataset.train_data = np.reshape(train_data, (-1, 3072)) / 255
 
         dataset.n_classes = 10
 
-        # dataset.input_dim = 3072
-        dataset.input_dim = 1024
+        dataset.input_dim = 3072
         dataset.input_type = "binary"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = visualization.cifar10_regeneration_plot
+
+        return dataset
+
+    def reuters(dir="data/reuters"):
+        import os
+        from sklearn.feature_extraction.text import CountVectorizer
+        from sklearn.feature_extraction.text import TfidfTransformer
+
+        did_to_cat = {}
+        cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']
+
+        with open(os.path.join(dir, 'rcv1-v2.topics.qrels')) as fin:
+            for line in fin.readlines():
+                line = line.strip().split(' ')
+                cat = line[0]
+                did = int(line[1])
+                if cat in cat_list:
+                    did_to_cat[did] = did_to_cat.get(did, []) + [cat]
+
+        # remove docs with multi labels
+        keys = [i for i in did_to_cat.keys()]
+        for did in keys:
+            if len(did_to_cat[did]) > 1:
+                del did_to_cat[did]
+
+        dat_list = ['lyrl2004_tokens_test_pt0.dat',
+                    'lyrl2004_tokens_test_pt1.dat',
+                    'lyrl2004_tokens_test_pt2.dat',
+                    'lyrl2004_tokens_test_pt3.dat',
+                    'lyrl2004_tokens_train.dat']
+
+        data = []
+        target = []
+        cat_to_cid = {'CCAT': 0, 'GCAT': 1, 'MCAT': 2, 'ECAT': 3}
+        del did
+
+        doc = ''
+        for dat in dat_list:
+            with open(os.path.join(dir, dat)) as fin:
+                for line in fin.readlines():
+                    if line.startswith('.I'):
+                        if 'did' in locals():
+                            if doc == '':
+                                continue
+                            if did in did_to_cat.keys():
+                                data.append(doc)
+                                target.append(cat_to_cid[did_to_cat[did][0]])
+                        did = int(line.strip().split(' ')[1])
+                        doc = ''
+                    elif line.startswith('.W'):
+                        assert doc == ''
+                    else:
+                        doc += line
+
+        X = CountVectorizer(
+            dtype=np.float64, max_features=2000).fit_transform(data)
+        Y = np.asarray(target)
+
+        X = TfidfTransformer(norm='l2', sublinear_tf=True).fit_transform(X)
+        X = np.asarray(X.todense()) * np.sqrt(X.shape[1])
+
+        X = 2 * (X - X.min(0)) / (X.max(0) - X.min(0)) - 1
+
+        p = np.random.permutation(X.shape[0])
+        X = X[p]
+        Y = Y[p]
+
+        split = int(0.8 * len(X))
+        train_data, test_data = X[:split], X[split:]
+        train_classes, test_classes = Y[:split], Y[split:]
+
+        class ReutersDataset:
+            pass
+
+        dataset = ReutersDataset()
+
+        dataset.datagroup = "reuters"
+
+        dataset.test_data = test_data
+        dataset.test_classes = test_classes
+
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
+
+        dataset.n_classes = 4
+
+        dataset.input_dim = 2000
+        dataset.input_type = "real"
+
+        dataset.sample_plot = None
+        dataset.regeneration_plot = None
+
+        return dataset
+
+    def reuters10k(dir="data/reuters", filename="reuters10k.mat"):
+        import scipy.io as scio
+
+        class Reuters10KDataset:
+            pass
+
+        dataset = Reuters10KDataset()
+
+        data = scio.loadmat(dir + "/" + filename)
+
+        X = data["X"]
+        Y = data["Y"].reshape(-1)
+
+        X = 2 * (X - X.min(0)) / (X.max(0) - X.min(0)) - 1
+
+        p = np.random.permutation(X.shape[0])
+        X = X[p]
+        Y = Y[p]
+
+        split = int(0.8 * len(X))
+        train_data, test_data = X[:split], X[split:]
+        train_classes, test_classes = Y[:split], Y[split:]
+
+        dataset.datagroup = "hhar"
+
+        dataset.datagroup = "reuters"
+
+        dataset.test_data = test_data
+        dataset.test_classes = test_classes
+
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
+
+        dataset.n_classes = 4
+
+        dataset.input_dim = 2000
+        dataset.input_type = "real"
 
         dataset.sample_plot = None
         dataset.regeneration_plot = None
@@ -191,10 +352,15 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset = spiral(**args)
     elif datagroup == "mnist":
         dataset = mnist(**args)
+    elif datagroup == "hhar":
+        dataset = hhar(**args)
     elif datagroup == "cifar10":
         dataset = cifar10(**args)
+    elif datagroup == "reuters":
+        dataset = reuters(**args)
+    elif datagroup == "reuters10k":
+        dataset = reuters10k(**args)
     else:
-        print(datagroup)
         raise NotImplementedError
 
     if classification:

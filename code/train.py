@@ -47,7 +47,7 @@ parser.add_argument("--n_epochs", type=int, default=500,
                     help="Number of epochs for training the model")
 parser.add_argument("--pretrain_epochs_vae", type=int, default=200,
                     help="Number of epochs for pretraining the vae model")
-parser.add_argument("--pretrain_epochs_gmm", type=int, default=200,
+parser.add_argument("--pretrain_epochs_prior", type=int, default=200,
                     help="Number of epochs for pretraining the gmm model")
 
 parser.add_argument("--init_lr", type=float, default=0.002,
@@ -57,12 +57,25 @@ parser.add_argument("--decay_rate", type=float, default=0.9,
 parser.add_argument("--decay_epochs", type=int, default=25,
                     help="Number of epochs between exponentially decay of learning rate")
 
-parser.add_argument("--pretrain_init_lr", type=float, default=0.002,
-                    help="Initial learning rate for pretraining")
+parser.add_argument("--pretrain", action="store_true", default=False,
+                    help="Whether to pretrain the model or not")
+
+parser.add_argument("--pretrain_vae_lr", type=float, default=0.0005,
+                    help="Initial learning rate for pretraining the vae")
 parser.add_argument("--pretrain_decay_rate", type=float, default=0.9,
                     help="Decay rate for exponentially decaying learning rate (< 1.0) for pretraining")
 parser.add_argument("--pretrain_decay_epochs", type=int, default=25,
                     help="Number of epochs between exponentially decay of learning rate for pretraining")
+
+parser.add_argument("--pretrain_prior_lr", type=float, default=0.0005,
+                    help="Initial learning rate for pretraining the prior")
+
+parser.add_argument("--kl_annealing", action="store_true", default=False,
+                    help="Whether to anneal the KL term while training or not")
+parser.add_argument("--anneal_step", type=float, default=0.1,
+                    help="Step size for annealing")
+parser.add_argument("--anneal_epochs", type=int, default=1000,
+                    help="Number of epochs before annealing the KL term")
 
 parser.add_argument("--plotting", action="store_true", default=False,
                     help="Whether to generate sampling and regeneration plots")
@@ -97,15 +110,23 @@ def main(argv):
     decay_rate = argv.decay_rate
     decay_epochs = argv.decay_epochs
 
-    pretrain_init_lr = argv.pretrain_init_lr
-    pretrain_decay_rate = argv.pretrain_decay_rate
-    pretrain_decay_epochs = argv.pretrain_decay_epochs
+    pretrain_vae_lr = argv.pretrain_vae_lr
+    pretrain_prior_lr = argv.pretrain_prior_lr
 
     moe = model_str[-3:] == "moe"
 
     n_epochs = argv.n_epochs
+
+    pretrain = args.pretrain
     pretrain_epochs_vae = argv.pretrain_epochs_vae
-    pretrain_epochs_gmm = argv.pretrain_epochs_gmm
+    pretrain_epochs_prior = argv.pretrain_epochs_prior
+
+    pretrain_decay_rate = argv.pretrain_decay_rate
+    pretrain_decay_epochs = argv.pretrain_decay_epochs
+
+    kl_annealing = args.kl_annealing
+    anneal_step = args.anneal_step
+    anneal_epochs = args.anneal_epochs
 
     dataset = load_data(
         dataset, classification=classification, output_dim=output_dim
@@ -170,33 +191,37 @@ def main(argv):
             model = base_models.VaDE(
                 model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph(
-                {"Z": [512, 256, 256]}, [256, 256, 512]
-            )
+            ).build_graph()
 
-        dataset.train_data = np.concatenate(
+        train_data = np.concatenate(
             [dataset.train_data, dataset.test_data], axis=0
         )
-        dataset.train_classes = np.concatenate(
+        train_classes = np.concatenate(
             [dataset.train_classes, dataset.test_classes], axis=0
         )
 
         test_data = (dataset.test_data, dataset.test_classes)
-        train_data = (dataset.train_data, dataset.train_classes)
+        train_data = (train_data, train_classes)
 
     test_data = Dataset(test_data, batch_size=100)
     train_data = Dataset(train_data, batch_size=100)
 
     model.define_train_step(
-        init_lr, train_data.epoch_len * decay_epochs, decay_rate)
+        init_lr, train_data.epoch_len * decay_epochs, decay_rate
+    )
 
-    if model_str in ["vade", "dvmoe", "vademoe"]:
-        model.define_pretrain_step(
-            pretrain_init_lr, train_data.epoch_len *
-            pretrain_decay_epochs, pretrain_decay_rate
-        )
+    if pretrain:
+        if model_str in ["dvmoe", "vademoe"]:
+            model.define_pretrain_step(
+                pretrain_vae_lr, train_data.epoch_len *
+                pretrain_decay_epochs, pretrain_decay_rate
+            )
+        elif model_str in ["dmvae", "vade"]:
+            model.define_pretrain_step(
+                pretrain_vae_lr, pretrain_prior_lr
+            )
 
-    model.path = "saved_models/%s/%s" % (dataset.datagroup, model.name)
+    model.path = "saved-models/%s/%s" % (dataset.datagroup, model.name)
     for path in [model.path + "/" + x for x in ["model", "vae", "prior"]]:
         if not os.path.exists(path):
             os.makedirs(path)
@@ -204,14 +229,15 @@ def main(argv):
     sess = tf.Session()
     tf.global_variables_initializer().run(session=sess)
 
-    if model_str in ["dvmoe", "vademoe"]:
-        model.pretrain(
-            sess, train_data, pretrain_epochs_vae
-        )
-    elif model_str in ["vade"]:
-        model.pretrain(
-            sess, train_data, pretrain_epochs_vae, pretrain_epochs_gmm
-        )
+    if pretrain:
+        if model_str in ["dvmoe", "vademoe"]:
+            model.pretrain(
+                sess, train_data, pretrain_epochs_vae
+            )
+        elif model_str in ["dmvae", "vade"]:
+            model.pretrain(
+                sess, train_data, pretrain_epochs_vae, pretrain_epochs_prior
+            )
 
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
     saver = tf.train.Saver(var_list)
@@ -225,6 +251,8 @@ def main(argv):
     with tqdm(range(n_epochs), postfix={"loss": "inf", "accTrain": "0.00%", "accTest": "0.00%"}) as bar:
         accuracy = 0.0
         max_accuracy = 0.0
+
+        anneal_term = 0.0 if kl_annealing else 1.0
 
         for epoch in bar:
             if plotting and epoch % plot_epochs == 0:
@@ -243,8 +271,11 @@ def main(argv):
                 if debug:
                     model.debug(sess, train_data)
 
+            if kl_annealing and (epoch + 1) % anneal_epochs == 0:
+                anneal_term = min(anneal_term + anneal_step, 1.0)
+
             if moe:
-                loss, accTrain = model.train_op(sess, train_data)
+                loss, accTrain = model.train_op(sess, train_data, anneal_term)
             else:
                 loss = model.train_op(sess, train_data)
                 accTrain = model.get_accuracy(sess, train_data)
