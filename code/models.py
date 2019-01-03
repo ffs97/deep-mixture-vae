@@ -5,7 +5,7 @@ from tqdm import tqdm
 from includes.utils import Dataset
 from includes.network import FeedForwardNetwork, DeepNetwork
 from base_models import DeepMixtureVAE, VaDE
-
+from includes.utils import get_clustering_accuracy
 
 class MoE:
     def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1, cnn=1):
@@ -57,8 +57,8 @@ class MoE:
             )
             if self.featLearn:
                 input_dim = self.latent_dim
-                inp2cls = tf.nn.relu(self.Z)
-                #inp2cls = tf.nn.relu(self.vae.mean)
+                # inp2cls = tf.nn.relu(self.Z)
+                inp2cls = tf.nn.relu(self.vae.mean)
                 # self.reconstructed_Y_soft = self.vae.reconstructed_Y_soft
                 print("="*100)
             else:
@@ -120,6 +120,7 @@ class MoE:
 
     def get_accuracy(self, session, data):
         error = 0.0
+        logits = []
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -129,17 +130,21 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            error += session.run(self.error, feed_dict=feed)
+            batchLogits, batchError = session.run([self.vae.logits, self.error], feed_dict=feed)
+
+            error += batchError
+            logits.append(batchLogits)
+
+        logits = np.concatenate(logits, axis=0)
+        accClustering = get_clustering_accuracy(logits, data.classes)
 
         if self.classification:
             error /= data.len
-
-            return 1 - error
+            return 1 - error, accClustering
 
         else:
             error /= data.epoch_len
-
-            return -error
+            return -error, accClustering
 
     def define_train_loss(self):
         self.vae.define_train_loss()

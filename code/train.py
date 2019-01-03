@@ -294,11 +294,13 @@ def main(argv):
 
             if moe:
                 loss, accTrain, lossCls = model.train_op(sess, train_data, anneal_term)
+                accTest, accClsTest = model.get_accuracy(sess, test_data)
             else:
                 loss = model.train_op(sess, train_data, anneal_term)
                 accTrain = model.get_accuracy(sess, train_data)
+                accTest = model.get_accuracy(sess, test_data)
+                accClsTest = accTest
 
-            accTest = model.get_accuracy(sess, test_data)
 
             if accTest > maxAcc:
                 maxAcc = accTest
@@ -322,7 +324,8 @@ def main(argv):
                 "loss": "%.4f" % loss,
                 "accTrain": "%.4f" % accTrain,
                 "accTest" : "%.4f" % accTest,  
-                "maxAcc" : "%.4f" % maxAcc,  
+                "maxAcc" : "%.4f" % maxAcc,
+                "accClusteringTest" : "%.4f" % accClsTest
                 #"lossCls" : "%.4f" % lossCls,
             })
 

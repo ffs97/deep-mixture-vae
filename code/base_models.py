@@ -153,7 +153,7 @@ class DeepMixtureVAE(VAE):
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
-        self.cnn = cnn
+        self.cnn = True#cnn
 
     def build_graph(self):
         with tf.variable_scope(self.name) as _:
