@@ -1,5 +1,17 @@
+
+*/saved_models/
+<<<<<<< HEAD
+
+=======
+*/logs/
+>>>>>>> moe
+*.txt
+
+*data*
+
 */logs/*
 */data/*
+
 *.vscode*
 *__pycache__*
 

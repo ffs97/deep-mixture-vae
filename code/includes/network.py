@@ -5,7 +5,7 @@ from includes.layers import FullyConnected, Convolution, MaxPooling, BatchNormal
 
 _layers_id_mapping = {
     "fc": FullyConnected,
-    "cv": Convolution,
+    "cn": Convolution,
     "mp": MaxPooling,
     "bn": BatchNormalization
 }

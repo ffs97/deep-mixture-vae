@@ -3,116 +3,13 @@ import tensorflow as tf
 
 from tqdm import tqdm
 from includes.utils import Dataset
-from includes.network import FeedForwardNetwork
+from includes.network import FeedForwardNetwork, DeepNetwork
 from base_models import DeepMixtureVAE, VaDE
-
-
-class DeepMoE:
-    def __init__(self, name, input_dim, output_dim, n_experts, activation=None, initializer=None):
-        self.name = name
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-
-        self.n_experts = n_experts
-
-        self.activation = activation
-        self.initializer = initializer
-
-    def build_graph(self, network_layer_sizes):
-        with tf.variable_scope(self.name) as _:
-            self.X = tf.placeholder(
-                tf.float32, shape=(None, self.input_dim), name="X"
-            )
-            self.Y = tf.placeholder(
-                tf.float32, shape=(None, self.output_dim), name="Y"
-            )
-
-            self.logits_network = FeedForwardNetwork(
-                name="logits_network"
-            )
-            self.logits = self.logits_network.build(
-                [("logits", self.n_experts)],
-                network_layer_sizes, self.X
-            )
-
-            self.regression_biases = tf.get_variable(
-                "regression_biases", dtype=tf.float32,
-                initializer=tf.initializers.zeros,
-                shape=(self.output_dim, self.n_experts)
-            )
-            self.regression_weights = tf.get_variable(
-                "regression_weights", dtype=tf.float32,
-                initializer=tf.initializers.random_normal,
-                shape=(self.n_experts, self.output_dim, self.input_dim)
-            )
-
-            self.expert_probs = tf.nn.softmax(self.logits)
-
-            self.reconstructed_Y_k = tf.transpose(tf.matmul(
-                self.regression_weights,
-                tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
-                )
-            )) + self.regression_biases
-
-            self.reconstructed_Y = tf.reduce_sum(
-                self.reconstructed_Y_k * self.expert_probs[:, None, :], axis=-1
-            )
-
-            self.error = tf.reduce_mean(
-                tf.square(self.reconstructed_Y - self.Y)
-            ) * self.output_dim
-
-            return self
-
-    def get_accuracy(self, session, data):
-        return session.run(self.error, feed_dict={
-            self.X: data.data,
-            self.Y: data.labels
-        })
-
-    def define_train_loss(self):
-        self.loss = - tf.log(tf.reduce_sum(
-            self.expert_probs * tf.exp(-0.5 * tf.reduce_sum(
-                tf.square(self.reconstructed_Y_k - self.Y[:, :, None]), axis=1
-            ))
-        ))
-
-    def define_train_step(self, init_lr, decay_steps, decay_rate=0.9):
-        learning_rate = tf.train.exponential_decay(
-            learning_rate=init_lr,
-            global_step=0,
-            decay_steps=decay_steps,
-            decay_rate=decay_rate
-        )
-
-        self.define_train_loss()
-        self.train_step = tf.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ).minimize(self.loss)
-
-    def train_op(self, session, data):
-        assert(self.train_step is not None)
-
-        loss = 0.0
-        for X_batch, Y_batch, _ in data.get_batches():
-            feed = {
-                self.X: X_batch,
-                self.Y: Y_batch
-            }
-
-            batch_loss, _ = session.run(
-                [self.loss, self.train_step],
-                feed_dict=feed
-            )
-            loss += batch_loss / data.epoch_len
-
-        return loss
+from includes.utils import get_clustering_accuracy
 
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1, cnn=1):
         self.name = name
 
         self.input_dim = input_dim
@@ -128,6 +25,10 @@ class MoE:
         self.initializer = initializer
 
         self.vae = None
+        self.featLearn = featLearn
+        self.lossVAE = lossVAE
+
+        self.cnn = cnn
 
     def _define_vae(self):
         raise NotImplementedError
@@ -146,7 +47,7 @@ class MoE:
                 tf.float32, shape=(None, self.output_dim), name="Y"
             )
 
-            self.logits = self.vae.logits
+            # self.logits = self.vae.logits
 
             self.reconstructed_X = self.vae.reconstructed_X
 
@@ -155,18 +56,28 @@ class MoE:
                 initializer=tf.initializers.zeros,
                 shape=(self.output_dim, self.n_experts)
             )
+            if self.featLearn:
+                input_dim = self.latent_dim
+                # inp2cls = tf.nn.relu(self.Z)
+                inp2cls = tf.nn.relu(self.vae.mean)
+                # self.reconstructed_Y_soft = self.vae.reconstructed_Y_soft
+                print("="*100)
+            else:
+                input_dim = self.input_dim
+                inp2cls = self.X
+
             self.regression_weights = tf.get_variable(
                 "regression_weights", dtype=tf.float32,
                 initializer=tf.initializers.random_normal,
-                shape=(self.n_experts, self.output_dim, self.input_dim)
+                shape=(self.n_experts, self.output_dim, input_dim)
             )
 
-            self.expert_probs = tf.nn.softmax(self.logits)
+            self.expert_probs = self.vae.cluster_probs
 
             expert_predictions = tf.transpose(tf.matmul(
                 self.regression_weights,
                 tf.tile(
-                    tf.transpose(self.X)[None, :, :], [self.n_experts, 1, 1]
+                    tf.transpose(inp2cls)[None, :, :], [self.n_experts, 1, 1]
                 )
             )) + self.regression_biases
 
@@ -208,37 +119,21 @@ class MoE:
     def sample_reparametrization_variables(self, n):
         return self.vae.sample_reparametrization_variables(n)
 
-    def get_accuracy(self, session, data):
-        error = 0.0
-        for X_batch, Y_batch, _ in data.get_batches():
-            error += session.run(self.error, feed_dict={
-                self.X: X_batch,
-                self.Y: Y_batch
-            })
-
-        if self.classification:
-            error /= data.len
-
-            return 1 - error
-
-        else:
-            error /= data.epoch_len
-
-            return -error
-
     def define_train_loss(self):
         self.vae.define_train_loss()
 
         if self.classification:
             self.recon_loss = -tf.reduce_mean(tf.reduce_sum(
                 self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
-            ))
+            ))*1000.0
         else:
             self.recon_loss = 0.5 * tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
             ) * self.output_dim
 
-        self.loss = self.vae.loss + self.recon_loss
+        self.loss = self.recon_loss
+        if self.lossVAE:
+            self.loss += self.vae.loss
 
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
         self.vae.define_train_step(
@@ -269,10 +164,38 @@ class MoE:
             for _ in bar:
                 self.vae.train_op(session, data)
 
-    def train_op(self, session, data):
+    def train_op(self, session, data, kl_ratio=1.0):
         assert(self.train_step is not None)
 
         loss = 0.0
+        lossCls = 0.0
+        for X_batch, Y_batch, _ in data.get_batches():
+            feed = {
+                self.X: X_batch,
+                self.Y: Y_batch,
+                self.vae.kl_ratio: kl_ratio
+            }
+            feed.update(
+                self.vae.sample_reparametrization_variables(len(X_batch))
+            )
+
+            batch_error, batch_loss, _ = session.run(
+                [self.error, self.loss, self.train_step],
+                feed_dict=feed
+            )
+            lossCls += batch_lossCls / data.epoch_len
+            loss += batch_loss / data.epoch_len
+
+        if self.classification:
+            batch_acc = 1 - batch_error/Y_batch.shape[0]
+        else:
+            batch_acc = - batch_error
+
+        return loss, batch_acc
+
+    def get_accuracy(self, session, data):
+        error = 0.0
+        logits = []
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -282,23 +205,31 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            batch_loss, _ = session.run(
-                [self.loss, self.train_step],
-                feed_dict=feed
-            )
+            batchLogits, batchError = session.run(
+                [self.vae.logits, self.error], feed_dict=feed)
 
-            # import pdb;pdb.set_trace()
-            loss += batch_loss / data.epoch_len
+            error += batchError
+            logits.append(batchLogits)
 
-        return loss
+        logits = np.concatenate(logits, axis=0)
+        accClustering = get_clustering_accuracy(logits, data.classes)
 
-    def debug(self, session, data):
+        if self.classification:
+            error /= data.len
+            return 1 - error, accClustering
+
+        else:
+            error /= data.epoch_len
+            return -error, accClustering
+
+    def debug(self, session, data, kl_ratio=1.0):
         import pdb
 
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
-                self.Y: Y_batch
+                self.Y: Y_batch,
+                self.vae.kl_ratio: kl_ratio
             }
             feed.update(
                 self.vae.sample_reparametrization_variables(len(X_batch))
@@ -309,27 +240,40 @@ class MoE:
             break
 
 
+class DeepMoE(MoE):
+    def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=0, cnn=1):
+        MoE.__init__(self, name, input_type, input_dim, 1, output_dim, n_experts,
+                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn, cnn=cnn)
+
+    def _define_vae(self):
+        with tf.variable_scope(self.name) as _:
+            self.vae = DeepMixtureVAE(
+                "null_vae", self.input_type, self.input_dim, self.latent_dim,
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
+            ).build_graph()
+
+
 class DeepVariationalMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
                 "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
             ).build_graph()
 
 
 class VaDEMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = VaDE(
                 "vade", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
             ).build_graph()

@@ -12,10 +12,12 @@ from includes.layers import Convolution, MaxPooling
 
 
 class VAE:
-    def __init__(self, name, input_type, input_dim, latent_dim, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, input_shape, latent_dim, activation=None, initializer=None):
         self.name = name
 
         self.input_dim = input_dim
+        self.input_shape = input_shape
+
         self.latent_dim = latent_dim
 
         self.input_type = input_type
@@ -38,7 +40,54 @@ class VAE:
         self.train_step = None
         self.latent_variables = dict()
 
-    def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
+    def define_encoder_network(self, cnn=False):
+        if cnn:
+            encoder_network = DeepNetwork(
+                "layers",
+                [
+                    ("cn", {
+                        "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                    }),
+                    ("cn", {
+                        "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                    }),
+                    ("mp", {"k": 2}),
+                    ("cn", {
+                        "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
+                    }),
+                    ("cn", {
+                        "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                    }),
+                    ("mp", {"k": 2}),
+                    ("cn", {
+                        "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
+                    }),
+                    ("cn", {
+                        "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                    }),
+                    ("mp", {"k": 2})
+                ],
+                [
+                    ("fc", {"input_dim": 2048, "output_dim": 500})
+                ],
+                activation=self.activation, initializer=self.initializer
+            )
+
+        else:
+            encoder_network = DeepNetwork(
+                "layers",
+                [
+                    ("fc", {"input_dim": self.input_dim, "output_dim": 500})
+                ],
+                [
+                    ("fc", {"input_dim": 500, "output_dim": 500})
+                ],
+                activation=self.activation, initializer=self.initializer
+            )
+
+        return encoder_network
+
+    def build_graph(self):
         raise NotImplementedError
 
     def sample_reparametrization_variables(self, n, variables=None):
@@ -148,13 +197,13 @@ class VAE:
 
 
 class DeepMixtureVAE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None):
-        VAE.__init__(self, name, input_type, input_dim, latent_dim,
+    def __init__(self, name, input_type, input_dim, input_shape, latent_dim, n_classes, activation=None, initializer=None):
+        VAE.__init__(self, name, input_type, input_dim, input_shape, latent_dim,
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
 
-    def build_graph(self):
+    def build_graph(self, cnn=False):
         with tf.variable_scope(self.name) as _:
             self.X = tf.placeholder(
                 tf.float32, shape=(None, self.input_dim), name="X"
@@ -168,20 +217,8 @@ class DeepMixtureVAE(VAE):
 
             self.latent_variables = dict()
 
-            # DMVAE  - shared    1   nbn   pretrained   ->   Working???? (gpu - dmvae, 94.86)
-
             with tf.variable_scope("encoder_network"):
-                encoder_network = DeepNetwork(
-                    "layers",
-                    [
-                        ("fc", {"input_dim": self.input_dim, "output_dim": 500})
-                        # ("bn", {"is_training": self.is_training})
-                    ],
-                    [
-                        ("fc", {"input_dim": 500, "output_dim": 500})
-                    ],
-                    activation=self.activation, initializer=self.initializer
-                )
+                encoder_network = self.define_encoder_network(cnn)
                 hidden = encoder_network(self.X)
 
                 with tf.variable_scope("z"):
@@ -219,6 +256,10 @@ class DeepMixtureVAE(VAE):
 
                     self.cluster_probs = tf.nn.softmax(self.logits)
 
+                self.reconstructed_Y_soft = tf.layers.dense(
+                    hidden, 10, activation=tf.nn.softmax, kernel_initializer=self.initializer()
+                )
+
             self.latent_variables.update({
                 "C": (
                     priors.DiscreteFactorial(
@@ -247,8 +288,7 @@ class DeepMixtureVAE(VAE):
                     "layers",
                     [
                         ("fc", {"input_dim": self.latent_dim, "output_dim": 2000}),
-                        ("fc", {"input_dim": 2000, "output_dim": 500}),
-                        ("fc", {"input_dim": 500, "output_dim": 500}),
+                        ("fc", {"input_dim": 2000, "output_dim": 500})
                     ],
                     [
                         ("fc", {"input_dim": 500, "output_dim": self.input_dim})
@@ -266,127 +306,6 @@ class DeepMixtureVAE(VAE):
 
         return self
 
-    def define_pretrain_step(self, vae_lr, prior_lr):
-        self.define_train_loss()
-
-        self.vae_loss = self.recon_loss
-        self.vae_train_step = tf.train.AdamOptimizer(
-            learning_rate=vae_lr
-        ).minimize(self.recon_loss)
-
-        prior_var_list = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/encoder_network/c"
-        )
-        # + tf.get_collection(
-        #     tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
-        # )
-
-        self.prior_train_step = tf.train.AdamOptimizer(
-            learning_rate=prior_lr
-        ).minimize(self.latent_loss, var_list=prior_var_list)
-
-    def pretrain_vae(self, session, data, n_epochs):
-        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-        saver = tf.train.Saver(var_list)
-        ckpt_path = self.path + "/vae/parameters.ckpt"
-
-        try:
-            saver.restore(session, ckpt_path)
-        except:
-            print("Could not load trained ae parameters")
-
-        min_loss = float("inf")
-        with tqdm(range(n_epochs)) as bar:
-            for _ in bar:
-                loss = 0
-                for batch in data.get_batches():
-                    feed = {
-                        self.X: batch,
-                        self.epsilon: np.zeros(
-                            (len(batch), self.latent_dim)
-                        ),
-                        self.is_training: True
-                    }
-
-                    batch_loss, _ = session.run(
-                        [self.recon_loss, self.vae_train_step], feed_dict=feed
-                    )
-                    loss += batch_loss / data.epoch_len
-
-                bar.set_postfix({"loss": "%.4f" % loss})
-
-                if loss <= min_loss:
-                    min_loss = loss
-                    saver.save(session, ckpt_path)
-
-    def pretrain_prior(self, session, data, n_epochs):
-        var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-        saver = tf.train.Saver(var_list)
-        ckpt_path = self.path + "/prior/parameters.ckpt"
-
-        try:
-            saver.restore(session, ckpt_path)
-        except:
-            print("Could not load trained prior parameters")
-
-            if n_epochs > 0:
-                feed = {
-                    self.X: data.data
-                }
-                Z = session.run(self.mean, feed_dict=feed)
-
-                gmm_model = GaussianMixture(
-                    n_components=self.n_classes,
-                    covariance_type="diag",
-                    max_iter=n_epochs,
-                    n_init=20,
-                    weights_init=np.ones(self.n_classes) / self.n_classes,
-                )
-                gmm_model.fit(Z)
-
-                lv = self.latent_variables["Z"][0]
-
-                init_prior_means = tf.assign(lv.means, gmm_model.means_)
-                init_prior_vars = tf.assign(
-                    lv.log_vars, np.log(gmm_model.covariances_ + 1e-20)
-                )
-
-                session.run([init_prior_means, init_prior_vars])
-                saver.save(session, ckpt_path)
-
-        min_loss = float("inf")
-        with tqdm(range(n_epochs)) as bar:
-            for _ in bar:
-                loss = 0
-                for batch in data.get_batches():
-                    feed = {
-                        self.X: batch,
-                        self.epsilon: np.zeros(
-                            (len(batch), self.latent_dim)
-                        ),
-                        self.is_training: True
-                    }
-
-                    batch_loss, _ = session.run(
-                        [self.latent_loss, self.prior_train_step], feed_dict=feed
-                    )
-                    loss += batch_loss / data.epoch_len
-
-                bar.set_postfix({"loss": "%.4f" % loss})
-
-                if loss <= min_loss:
-                    min_loss = loss
-                    saver.save(session, ckpt_path)
-
-    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
-        assert(
-            self.vae_train_step is not None and
-            self.prior_train_step is not None
-        )
-
-        self.pretrain_vae(session, data, n_epochs_vae)
-        self.pretrain_prior(session, data, n_epochs_gmm)
-
     def get_accuracy(self, session, data):
         logits = []
         for batch in data.get_batches():
@@ -398,13 +317,13 @@ class DeepMixtureVAE(VAE):
 
 
 class VaDE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None):
-        VAE.__init__(self, name, input_type, input_dim, latent_dim,
+    def __init__(self, name, input_type, input_dim, input_shape, latent_dim, n_classes, activation=None, initializer=None):
+        VAE.__init__(self, name, input_type, input_dim, input_shape, latent_dim,
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
 
-    def build_graph(self):
+    def build_graph(self, cnn=False):
         with tf.variable_scope(self.name) as _:
             self.X = tf.placeholder(
                 tf.float32, shape=(None, self.input_dim), name="X"
@@ -415,25 +334,30 @@ class VaDE(VAE):
 
             self.latent_variables = dict()
 
+            if cnn:
+                self.X = tf.reshape(self.X, self.input_shape)
+
             with tf.variable_scope("encoder_network"):
-                encoder_network = DeepNetwork(
-                    "layers",
-                    [
-                        ("fc", {"input_dim": self.input_dim, "output_dim": 2000}),
-                        ("fc", {"input_dim": 2000, "output_dim": 500}),
-                        ("fc", {"input_dim": 500, "output_dim": 500})
-                    ],
-                    activation=self.activation, initializer=self.initializer
-                )
+                encoder_network = self.define_encoder_network(cnn)
                 hidden = encoder_network(self.X)
 
                 with tf.variable_scope("z"):
-                    self.mean = tf.layers.dense(
-                        hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
+                    encoder_network_z = DeepNetwork(
+                        "layers",
+                        [
+                            ("fc", {"input_dim": 500, "output_dim": 2000})
+                        ],
+                        [
+                            ("fc", {
+                                "input_dim": 2000, "output_dim": self.latent_dim
+                            }),
+                            ("fc", {
+                                "input_dim": 2000, "output_dim": self.latent_dim
+                            })
+                        ],
+                        activation=self.activation, initializer=self.initializer
                     )
-                    self.log_var = tf.layers.dense(
-                        hidden, self.latent_dim, activation=None, kernel_initializer=self.initializer()
-                    )
+                    self.mean, self.log_var = encoder_network_z(hidden)
 
             self.latent_variables.update({
                 "Z": (
@@ -467,9 +391,11 @@ class VaDE(VAE):
                 decoder_network = DeepNetwork(
                     "layers",
                     [
-                        ("fc", {"input_dim": self.latent_dim, "output_dim": 500}),
-                        ("fc", {"input_dim": 500, "output_dim": 500}),
-                        ("fc", {"input_dim": 500, "output_dim": 2000})
+                        ("fc", {"input_dim": self.latent_dim, "output_dim": 2000}),
+                        ("fc", {"input_dim": 2000, "output_dim": 500})
+                    ],
+                    [
+                        ("fc", {"input_dim": 500, "output_dim": self.input_dim})
                     ],
                     activation=self.activation, initializer=self.initializer
                 )
@@ -488,15 +414,15 @@ class VaDE(VAE):
 
         return self
 
-    # def define_latent_loss(self):
-    #     self.latent_loss = tf.add_n(
-    #         [lv.kl_from_prior(params)
-    #          for lv, _, params in self.latent_variables.values()]
-    #     )
-    #     self.latent_loss += tf.reduce_mean(tf.reduce_sum(
-    #         self.cluster_probs * tf.log(self.cluster_probs + 1e-20),
-    #         axis=-1
-    #     ))
+    def define_latent_loss(self):
+        self.latent_loss = tf.add_n(
+            [lv.kl_from_prior(params)
+             for lv, _, params in self.latent_variables.values()]
+        )
+        self.latent_loss += tf.reduce_mean(tf.reduce_sum(
+            self.cluster_probs * tf.log(self.cluster_probs + 1e-20),
+            axis=-1
+        ))
 
     def define_pretrain_step(self, vae_lr, _prior_lr=None):
         self.define_train_loss()

@@ -1,10 +1,12 @@
 import os
+import math
 import models
 import argparse
 import base_models
 import numpy as np
 import tensorflow as tf
 import matplotlib as mpl
+from visdom import Visdom
 
 from tqdm import tqdm
 
@@ -88,6 +90,12 @@ parser.add_argument("--save_epochs", type=int, default=10,
 parser.add_argument("--debug", action="store_true", default=False,
                     help="Whether to debug the models or not")
 
+parser.add_argument("--visdom", action="store_true", default=False,
+                    help="Using visdom for plotting")
+
+parser.add_argument("--featLearn", action="store_true", default=False,
+                    help="Whether to use feature learning in MOE")
+
 
 def main(argv):
     dataset = argv.dataset
@@ -117,6 +125,8 @@ def main(argv):
 
     n_epochs = argv.n_epochs
 
+    visdom = argv.visdom
+
     pretrain = args.pretrain
     pretrain_epochs_vae = argv.pretrain_epochs_vae
     pretrain_epochs_prior = argv.pretrain_epochs_prior
@@ -131,7 +141,7 @@ def main(argv):
     dataset = load_data(
         dataset, classification=classification, output_dim=output_dim
     )
-
+    print(dataset.input_type)
     if model_name == "":
         model_name = model_str
 
@@ -148,25 +158,21 @@ def main(argv):
 
         if model_str == "dmoe":
             model = models.DeepMoE(
-                model_str, dataset.input_dim, output_dim, n_experts, classification,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            )
-            model.build_graph(
-                [512, 256]
-            )
-
+                model_str, dataset.input_type, dataset.input_dim, output_dim, n_experts, classification,
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
+            ).build_graph()
             plotting = False
 
         elif model_str == "dvmoe":
             model = models.DeepVariationalMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
-                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
 
         elif model_str == "vademoe":
             model = models.VaDEMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
-                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
 
         test_data = (
@@ -252,9 +258,18 @@ def main(argv):
     except:
         print("Could not load trained model")
 
-    with tqdm(range(n_epochs), postfix={"loss": "inf", "accy": "0.00%"}) as bar:
-        accuracy = 0.0
-        max_accuracy = 0.0
+    if visdom:
+        viz = Visdom()
+        options = dict(
+            ytickmin=90,
+            ytickmax=100,
+            xlabel="Epochs",
+            ylabel="Accuracy",
+            title="Accuracy vs Time",
+        )
+
+    with tqdm(range(n_epochs), postfix={"loss": "inf", "accTrain": "0.00%", "accTest": "0.00%"}) as bar:
+        max_test_acc = 0.0
 
         anneal_term = 0.0 if kl_annealing else 1.0
 
@@ -267,27 +282,70 @@ def main(argv):
                     dataset.regeneration_plot(model, test_data, sess)
 
             if epoch % save_epochs == 0:
-                accuracy = model.get_accuracy(sess, train_data)
-                if accuracy > max_accuracy:
-                    max_accuracy = accuracy
-                    saver.save(sess, ckpt_path)
-
                 if debug:
                     model.debug(sess, train_data)
 
             if kl_annealing and (epoch + 1) % anneal_epochs == 0:
                 anneal_term = min(anneal_term + anneal_step, 1.0)
 
+            if moe:
+                loss, train_acc = model.train_op(
+                    sess, train_data, anneal_term
+                )
+                test_acc, clustering_acc = model.get_accuracy(sess, test_data)
+            else:
+                loss = model.train_op(sess, train_data, anneal_term)
+
+                train_acc = model.get_accuracy(sess, train_data)
+                test_acc = model.get_accuracy(sess, test_data)
+
+                clustering_acc = train_acc
+
+            if test_acc > max_test_acc:
+                max_test_acc = test_acc
+                saver.save(sess, ckpt_path)
+
+            if visdom:
+                if epoch % 100 == 0:
+                    win = viz.line(
+                        X=np.arange(epoch, epoch + 0.1), Y=np.arange(0, .1)
+                    )
+
+                test_acc_, train_acc_ = test_acc, train_acc
+                if epoch > 0:
+                    viz.line(
+                        X=np.linspace(epoch - 1, epoch, 50),
+                        Y=np.linspace(train_acc_, train_acc, 50),
+                        name="train", update="append", win=win, opts=options
+                    )
+                    viz.line(
+                        X=np.linspace(epoch - 1, epoch, 50),
+                        Y=np.linspace(test_acc_, test_acc, 50),
+                        name="test", update="append", win=win, opts=options
+                    )
+
+            if math.isnan(loss):
+                model.debug(sess, train_data)
+
             bar.set_postfix({
-                "loss": "%.4f" % model.train_op(sess, train_data, anneal_term),
-                "acc": "%.4f" % accuracy
+                "loss": "%.4f" % loss,
+                "test_acc": "%.4f" % test_acc,
+                "train_acc": "%.4f" % train_acc,
+                "max_test_acc": "%.4f" % max_test_acc,
+                "clustering_acc": "%.4f" % clustering_acc
             })
 
     if plotting:
         dataset.sample_plot(model, sess)
         dataset.regeneration_plot(model, test_data, sess)
 
+    fl = open("logs/%s.txt" % model_name, "a+")
+    fl.write("\n%s\n------\n" % str(argv))
+    fl.write("Max Accuracy        %.4f\n============" % max_test_acc)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    print(args)
+
     main(args)

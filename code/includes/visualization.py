@@ -4,7 +4,8 @@ import tensorflow as tf
 import matplotlib as mpl
 
 from sklearn.manifold import TSNE
-
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as grid
 
