@@ -8,7 +8,7 @@ from base_models import DeepMixtureVAE, VaDE
 
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1):
+    def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1, cnn=1):
         self.name = name
 
         self.input_dim = input_dim
@@ -26,6 +26,8 @@ class MoE:
         self.vae = None
         self.featLearn = featLearn
         self.lossVAE = lossVAE
+
+        self.cnn = cnn
 
     def _define_vae(self):
         raise NotImplementedError
@@ -233,37 +235,37 @@ class MoE:
 class DeepMoE(MoE):
     def __init__(self, name, input_type, input_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=0, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, 1, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn)
+                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn, cnn=cnn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
                 "null_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=cnn
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
             ).build_graph()
 
 class DeepVariationalMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer, featLearn=featLearn)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
                 "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=cnn
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
             ).build_graph()
 
 
 class VaDEMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, output_dim, n_experts,
-                     classification, activation=activation, initializer=initializer, featLearn=featLearn)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = VaDE(
                 "vade", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=cnn
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
             ).build_graph()
 
