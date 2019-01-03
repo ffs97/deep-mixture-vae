@@ -96,6 +96,8 @@ parser.add_argument("--visdom", action="store_true", default=False,
 parser.add_argument("--featLearn", action="store_true", default=False,
                     help="Whether to use feature learning in MOE")
 
+
+
 def main(argv):
     dataset = argv.dataset
 
@@ -138,7 +140,7 @@ def main(argv):
     dataset = load_data(
         dataset, classification=classification, output_dim=output_dim
     )
-
+    print(dataset.input_type)
     if model_name == "":
         model_name = model_str
 
@@ -334,4 +336,5 @@ def main(argv):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    print(args)
     main(args)

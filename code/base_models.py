@@ -200,7 +200,7 @@ class DeepMixtureVAE(VAE):
                                 "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
                             }),
                             ("mp", {"k": 2}),
-                            # ("fc", {"input_dim": 2048, "output_dim": 128})
+                            ("fc", {"input_dim": 2048, "output_dim": 500})
                         ],
                         # Following for fast testing
                         # [
