@@ -171,50 +171,52 @@ class DeepMixtureVAE(VAE):
             # DMVAE  - shared    1   nbn   pretrained   ->   Working???? (gpu - dmvae, 94.86)
 
             with tf.variable_scope("encoder_network"):
-                # encoder_network = DeepNetwork(
-                #     "layers",
-                #     [
-                #         ("fc", {"input_dim": self.input_dim, "output_dim": 500}),
-                #         ("bn", {"is_training": self.is_training}),
-                #         ("fc", {"input_dim": 500, "output_dim": 500}),
-                #         ("bn", {"is_training": self.is_training}),
-                #         ("fc", {"input_dim": 500, "output_dim": 2000}),
-                #         ("bn", {"is_training": self.is_training})
-                #         # ("fc", {"input_dim": self.input_dim, "output_dim": 256}),
-                #         # ("fc", {"input_dim": 256, "output_dim": 512})
-                #     ],
-                #     activation=self.activation, initializer=self.initializer
-                # )
-                # hidden = encoder_network(self.X)
-
-                hidden = self.X
-                hidden = tf.layers.dense(
-                    hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
+                encoder_network = DeepNetwork(
+                    "layers",
+                    [
+                        ("fc", {"input_dim": self.input_dim, "output_dim": 500})
+                        # ("bn", {"is_training": self.is_training})
+                    ],
+                    [
+                        ("fc", {"input_dim": 500, "output_dim": 500})
+                    ],
+                    activation=self.activation, initializer=self.initializer
                 )
-                hidden = tf.layers.dense(
-                    hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
-                )
+                hidden = encoder_network(self.X)
 
                 with tf.variable_scope("z"):
-                    hidden_z = tf.layers.dense(
-                        hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
+                    encoder_network_z = DeepNetwork(
+                        "layers",
+                        [
+                            ("fc", {"input_dim": 500, "output_dim": 2000})
+                        ],
+                        [
+                            ("fc", {
+                                "input_dim": 2000, "output_dim": self.latent_dim
+                            }),
+                            ("fc", {
+                                "input_dim": 2000, "output_dim": self.latent_dim
+                            })
+                        ],
+                        activation=self.activation, initializer=self.initializer
                     )
-
-                    self.mean = tf.layers.dense(
-                        hidden_z, self.latent_dim, activation=None, kernel_initializer=self.initializer()
-                    )
-                    self.log_var = tf.layers.dense(
-                        hidden_z, self.latent_dim, activation=None, kernel_initializer=self.initializer()
-                    )
+                    self.mean, self.log_var = encoder_network_z(hidden)
 
                 with tf.variable_scope("c"):
-                    hidden_c = tf.layers.dense(
-                        hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
+                    encoder_network_c = DeepNetwork(
+                        "layers",
+                        [
+                            ("fc", {"input_dim": 500, "output_dim": 2000})
+                        ],
+                        [
+                            ("fc", {
+                                "input_dim": 2000, "output_dim": self.n_classes
+                            })
+                        ],
+                        activation=self.activation, initializer=self.initializer
                     )
+                    self.logits = encoder_network_c(hidden)
 
-                    self.logits = tf.layers.dense(
-                        hidden_c, self.n_classes, activation=None, kernel_initializer=self.initializer()
-                    )
                     self.cluster_probs = tf.nn.softmax(self.logits)
 
             self.latent_variables.update({
@@ -248,13 +250,12 @@ class DeepMixtureVAE(VAE):
                         ("fc", {"input_dim": 2000, "output_dim": 500}),
                         ("fc", {"input_dim": 500, "output_dim": 500}),
                     ],
+                    [
+                        ("fc", {"input_dim": 500, "output_dim": self.input_dim})
+                    ],
                     activation=self.activation, initializer=self.initializer
                 )
-                hidden = decoder_network(self.Z)
-
-                self.decoded_X = tf.layers.dense(
-                    hidden, self.input_dim, activation=None, kernel_initializer=self.initializer()
-                )
+                self.decoded_X = decoder_network(self.Z)
 
             if self.input_type == "binary":
                 self.reconstructed_X = tf.nn.sigmoid(self.decoded_X)

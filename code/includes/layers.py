@@ -31,7 +31,8 @@ class FullyConnected(Layer):
         outputs = tf.layers.flatten(inputs)
         outputs = tf.matmul(outputs, self.W) + self.b
 
-        outputs = self.activation(outputs)
+        if self.activation is not None:
+            outputs = self.activation(outputs)
 
         return outputs
 
@@ -56,7 +57,9 @@ class Convolution(Layer):
             inputs, self.W, strides=self.strides, padding='SAME'
         )
         outputs = tf.nn.bias_add(outputs, self.b)
-        outputs = self.activation(outputs)
+
+        if self.activation is not None:
+            outputs = self.activation(outputs)
 
         return outputs
 

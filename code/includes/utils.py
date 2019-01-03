@@ -330,7 +330,7 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         dataset.datagroup = "hhar"
 
-        dataset.datagroup = "reuters"
+        dataset.datagroup = "reuters10k"
 
         dataset.test_data = test_data
         dataset.test_classes = test_classes
