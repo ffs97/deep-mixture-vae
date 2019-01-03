@@ -69,7 +69,7 @@ class MoE:
                 shape=(self.n_experts, self.output_dim, input_dim)
             )
 
-            self.expert_probs = self.vae.cluster_weights
+            self.expert_probs = self.vae.cluster_probs
 
             expert_predictions = tf.transpose(tf.matmul(
                 self.regression_weights,
@@ -184,7 +184,7 @@ class MoE:
             for _ in bar:
                 self.vae.train_op(session, data)
 
-    def train_op(self, session, data):
+    def train_op(self, session, data, kl_ratio=1.0):
         assert(self.train_step is not None)
 
         loss = 0.0
@@ -192,7 +192,8 @@ class MoE:
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
-                self.Y: Y_batch
+                self.Y: Y_batch,
+                self.vae.kl_ratio: kl_ratio
             }
             feed.update(
                 self.vae.sample_reparametrization_variables(len(X_batch))
@@ -212,12 +213,14 @@ class MoE:
         
         return loss, batch_acc, lossCls
 
-    def debug(self, session, data):
+    def debug(self, session, data, kl_ratio=1.0):
+        import pdb
 
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
-                self.Y: Y_batch
+                self.Y: Y_batch,
+                self.vae.kl_ratio: kl_ratio
             }
             feed.update(
                 self.vae.sample_reparametrization_variables(len(X_batch))

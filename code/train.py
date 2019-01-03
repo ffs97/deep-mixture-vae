@@ -1,4 +1,5 @@
 import os
+import math
 import models
 import argparse
 import base_models
@@ -292,7 +293,7 @@ def main(argv):
             if moe:
                 loss, accTrain, lossCls = model.train_op(sess, train_data, anneal_term)
             else:
-                loss = model.train_op(sess, train_data)
+                loss = model.train_op(sess, train_data, anneal_term)
                 accTrain = model.get_accuracy(sess, train_data)
 
             accTest = model.get_accuracy(sess, test_data)
@@ -309,15 +310,18 @@ def main(argv):
 
                 accTest_old, accTrain_old = accTest, accTrain
                 if epoch > 0:
-                    viz.line(X=np.linspace(epoch-1, epoch,50), Y=>>>>>>> moenp.linspace(accTrain_old, accTrain,50), name='1', update='append', win=win, opts=options)
+                    viz.line(X=np.linspace(epoch-1, epoch,50), Y=np.linspace(accTrain_old, accTrain,50), name='1', update='append', win=win, opts=options)
                     viz.line(X=np.linspace(epoch-1, epoch,50), Y=np.linspace(accTest_old, accTest,50), name='2', update='append', win=win, opts=options)
+
+            if math.isnan(loss):
+               model.debug(sess, train_data)
 
             bar.set_postfix({
                 "loss": "%.4f" % loss,
                 "accTrain": "%.4f" % accTrain,
                 "accTest" : "%.4f" % accTest,  
                 "maxAcc" : "%.4f" % maxAcc,  
-                "lossCls" : "%.4f" % lossCls,
+                #"lossCls" : "%.4f" % lossCls,
             })
 
     if plotting:
