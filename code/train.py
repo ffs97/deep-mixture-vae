@@ -96,6 +96,9 @@ parser.add_argument("--visdom", action="store_true", default=False,
 parser.add_argument("--featLearn", action="store_true", default=False,
                     help="Whether to use feature learning in MOE")
 
+parser.add_argument("--ss", action="store_true", default=False,
+                    help="To do semi supervised learning")
+
 
 
 def main(argv):
@@ -150,7 +153,7 @@ def main(argv):
         if classification:
             output_dim = dataset.n_classes
 
-        from includes.utils import MEDataset as Dataset
+        from includes.utils import MEDataset as Dataset, DatasetSS
 
         if model_str not in ["dmoe", "vademoe", "dvmoe"]:
             raise NotImplementedError
@@ -186,7 +189,7 @@ def main(argv):
         if n_clusters < 1:
             n_clusters = dataset.n_classes
 
-        from includes.utils import Dataset
+        from includes.utils import Dataset, DatasetSS
 
         if model_str not in ["dmvae", "vade"]:
             raise NotImplementedError
@@ -213,7 +216,10 @@ def main(argv):
         train_data = (train_data, train_classes)
 
     test_data = Dataset(test_data, batch_size=100)
-    train_data = Dataset(train_data, batch_size=100)
+    if argv.ss:
+        train_data = DatasetSS(train_data, batch_size=100, labelPD=len(dataset.train_data))
+    else:
+        train_data = Dataset(train_data, batch_size=100)
 
     model.define_train_step(
         init_lr, train_data.epoch_len * decay_epochs, decay_rate

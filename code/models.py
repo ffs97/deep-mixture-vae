@@ -28,6 +28,7 @@ class MoE:
         self.lossVAE = lossVAE
 
         self.cnn = cnn
+        self.is_unlabled = True
 
     def _define_vae(self):
         raise NotImplementedError
@@ -150,15 +151,16 @@ class MoE:
         self.vae.define_train_loss()
 
         if self.classification:
-            self.recon_loss = -tf.reduce_mean(tf.reduce_sum(
+            self.classificationLoss = -tf.reduce_mean(tf.reduce_sum(
                 self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
             ))*1000.0
         else:
-            self.recon_loss = 0.5 * tf.reduce_mean(
+            self.classificationLoss = 0.5 * tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
             ) * self.output_dim
 
-        self.loss = self.recon_loss
+        self.loss = 0 if self.is_unlabled else self.classificationLoss
+
         if self.lossVAE:
             self.loss += self.vae.loss
 
@@ -196,20 +198,42 @@ class MoE:
 
         loss = 0.0
         lossCls = 0.0
-        for X_batch, Y_batch, _ in data.get_batches():
+        for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
+
+            # ===========      1      ===============
+            # self.is_unlabled = True
+            # feed = {
+            #     self.X: X_batch,
+            #     self.Y: dummy_y,
+            #     self.vae.kl_ratio: kl_ratio,
+            # }
+            # feed.update(
+            #     self.vae.sample_reparametrization_variables(len(X_batch))
+            # )
+
+            # batch_error, batch_loss, _, batch_lossCls = session.run(
+            #     [self.error, self.loss, self.train_step, self.classificationLoss],
+            #     feed_dict=feed
+            # )
+            # ===========      2      ===============
+
+            self.is_unlabled = False
             feed = {
-                self.X: X_batch,
+                self.X: X_batch_lbl,
                 self.Y: Y_batch,
-                self.vae.kl_ratio: kl_ratio
+                self.vae.kl_ratio: kl_ratio,
             }
             feed.update(
-                self.vae.sample_reparametrization_variables(len(X_batch))
+                self.vae.sample_reparametrization_variables(len(X_batch_lbl))
             )
 
             batch_error, batch_loss, _, batch_lossCls = session.run(
-                [self.error, self.loss, self.train_step, self.recon_loss],
+                [self.error, self.loss, self.train_step, self.classificationLoss],
                 feed_dict=feed
             )
+
+            # =======================================
+            
             lossCls +=  batch_lossCls / data.epoch_len
             loss += batch_loss / data.epoch_len
 

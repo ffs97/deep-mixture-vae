@@ -2,7 +2,7 @@ import math
 import numpy as np
 import pickle as pkl
 import scipy.sparse as sp
-
+import random
 from includes import visualization
 from sklearn.utils.linear_assignment_ import linear_assignment
 
@@ -461,6 +461,78 @@ class Dataset:
                 batch = []
         if len(batch) > 0:
             yield np.array(batch)
+
+    def __len__(self):
+        return self.epoch_len
+
+class DatasetSS:
+    def __init__(self, data, batch_size=100, shuffle=True, labelPD=100):
+        self.data, self.classes, self.labels = data
+        self.len = len(self.data)
+
+        indices = random.sample(range(self.classes.shape[0]), labelPD)
+        self.labelData = self.data[indices,:]
+        self.labelDataClasses = self.classes[indices]
+        self.labelDataLabels = self.labels[indices, :]
+
+        self.batch_size = batch_size
+
+        self.shuffle = shuffle
+
+        self.data_dim = self.data.shape[1]
+
+        self.epoch_len = int(math.ceil(len(self.data) / batch_size))
+        # import pdb; pdb.set_trace()
+
+        assert(len(self.labels) == self.len and len(self.classes) == self.len)
+
+    def get_batches(self):
+        if self.shuffle:
+            indices = np.random.permutation(len(self.data))
+
+            self.data = self.data[indices]
+            self.labels = self.labels[indices]
+            self.classes = self.classes[indices]
+
+            indices = np.random.permutation(len(self.labelData))
+            self.labelData = self.labelData[indices]
+            self.labelDataClasses = self.labelDataClasses[indices]
+            self.labelDataLabels = self.labelDataLabels[indices]
+
+        data_batch = list()
+        labels_batch = list()
+        classes_batch = list()
+        data_batch_lbl = list()
+        labels_batch_lbl = list()
+        classes_batch_lbl = list()
+
+        count = 0
+        for i in range(len(self.data)):
+            data_batch.append(self.data[i])
+            labels_batch.append(self.labels[i])
+            classes_batch.append(self.classes[i])
+
+            if count < self.batch_size/10.0:
+                data_batch_lbl.append(self.labelData[i%100])
+                labels_batch_lbl.append(self.labelDataLabels[i%100])
+                classes_batch_lbl.append(self.labelDataClasses[i%100])
+
+            count += 1
+
+            if count == self.batch_size:
+                yield (np.array(data_batch), np.array(labels_batch), np.array(classes_batch)), (np.array(data_batch_lbl), np.array(labels_batch_lbl), np.array(classes_batch_lbl))
+
+                data_batch = list()
+                labels_batch = list()
+                classes_batch = list()
+                data_batch_lbl = list()
+                labels_batch_lbl = list()
+                classes_batch_lbl = list()
+
+                count = 0
+
+        if count > 0:
+            yield (np.array(data_batch), np.array(labels_batch), np.array(classes_batch)), (np.array(data_batch_lbl), np.array(labels_batch_lbl), np.array(classes_batch_lbl))
 
     def __len__(self):
         return self.epoch_len
