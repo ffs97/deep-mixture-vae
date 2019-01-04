@@ -3,7 +3,6 @@ import tensorflow as tf
 
 from tqdm import tqdm
 from includes.utils import Dataset
-from includes.network import FeedForwardNetwork, DeepNetwork
 from base_models import DeepMixtureVAE, VaDE
 from includes.utils import get_clustering_accuracy
 

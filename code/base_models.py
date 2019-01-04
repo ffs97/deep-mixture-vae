@@ -6,7 +6,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from sklearn.mixture import GaussianMixture
 
-from includes.network import FeedForwardNetwork, FeedForwardNetworkWithBN, DeepNetwork
+from includes.network import DeepNetwork
 from includes.utils import get_clustering_accuracy
 from includes.layers import Convolution, MaxPooling
 
