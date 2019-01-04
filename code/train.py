@@ -91,6 +91,8 @@ parser.add_argument("--save_epochs", type=int, default=10,
 
 parser.add_argument("--debug", action="store_true", default=False,
                     help="Whether to debug the models or not")
+parser.add_argument("--debug_epochs", type=int, default=10,
+                    help="Nummber of epochs before entering into debug mode")
 
 parser.add_argument("--visdom", action="store_true", default=False,
                     help="Using visdom for plotting")
@@ -112,7 +114,9 @@ def main(argv):
     save_epochs = argv.save_epochs
 
     plotting = argv.plotting
+
     debug = argv.debug
+    debug_epochs = argv.debug_epochs
 
     classification = argv.classification
 
@@ -190,7 +194,7 @@ def main(argv):
 
         from includes.utils import Dataset
 
-        if model_str not in ["dmvae", "vade"]:
+        if model_str not in ["dmvae", "vade", "imsat"]:
             raise NotImplementedError
 
         if model_str == "dmvae":
@@ -203,6 +207,13 @@ def main(argv):
                 model_name, dataset.input_type, dataset.input_dim, dataset.input_shape, latent_dim,
                 n_clusters, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
+        elif model_str == "imsat":
+            model = base_models.IMSAT(
+                model_name, dataset.input_type, dataset.input_dim, dataset.input_shape, n_clusters,
+                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+            ).build_graph()
+
+            plotting = False
 
         train_data = np.concatenate(
             [dataset.train_data, dataset.test_data], axis=0
@@ -305,6 +316,9 @@ def main(argv):
                     if clustering_acc > max_acc:
                         max_acc = clustering_acc
                         saver.save(sess, ckpt_path)
+
+            if debug and epoch % debug_epochs:
+                model.debug(sess, test_data)
 
             if plotting and epoch % plot_epochs == 0:
                 if dataset.sample_plot is not None:

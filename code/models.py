@@ -167,7 +167,6 @@ class MoE:
         assert(self.train_step is not None)
 
         loss = 0.0
-        lossCls = 0.0
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -182,7 +181,6 @@ class MoE:
                 [self.error, self.loss, self.train_step],
                 feed_dict=feed
             )
-            lossCls += batch_lossCls / data.epoch_len
             loss += batch_loss / data.epoch_len
 
         if self.classification:
@@ -248,8 +246,8 @@ class DeepMoE(MoE):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
                 "null_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
-            ).build_graph()
+                self.n_experts, activation=self.activation, initializer=self.initializer
+            ).build_graph(cnn=self.cnn)
 
 
 class DeepVariationalMoE(MoE):
@@ -261,8 +259,8 @@ class DeepVariationalMoE(MoE):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
                 "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
-            ).build_graph()
+                self.n_experts, activation=self.activation, initializer=self.initializer
+            ).build_graph(cnn=self.cnn)
 
 
 class VaDEMoE(MoE):
@@ -274,5 +272,5 @@ class VaDEMoE(MoE):
         with tf.variable_scope(self.name) as _:
             self.vae = VaDE(
                 "vade", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
-            ).build_graph()
+                self.n_experts, activation=self.activation, initializer=self.initializer
+            ).build_graph(cnn=self.cnn)
