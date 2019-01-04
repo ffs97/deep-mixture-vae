@@ -28,7 +28,8 @@ class MoE:
         self.lossVAE = lossVAE
 
         self.cnn = cnn
-        self.is_unlabled = True
+        self.is_unlabeled = tf.placeholder(tf.int32, shape=[], name="is_unlabeled")
+ 
 
     def _define_vae(self):
         raise NotImplementedError
@@ -161,7 +162,8 @@ class MoE:
                 tf.square(self.reconstructed_Y - self.Y)
             ) * self.output_dim
 
-        self.loss = 0 if self.is_unlabled else self.classificationLoss
+        self.loss = tf.cond(self.is_unlabeled > 0, lambda: 0.0, lambda: self.classificationLoss)
+        
 
         if self.lossVAE:
             self.loss += self.vae.loss
@@ -203,27 +205,29 @@ class MoE:
         for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
 
             # ===========      1      ===============
-            # self.is_unlabled = True
-            # feed = {
-            #     self.X: X_batch,
-            #     self.Y: dummy_y,
-            #     self.vae.kl_ratio: kl_ratio,
-            # }
-            # feed.update(
-            #     self.vae.sample_reparametrization_variables(len(X_batch))
-            # )
+            self.is_unlabled = True
+            feed = {
+                self.X: X_batch,
+                self.Y: dummy_y,
+                self.vae.kl_ratio: kl_ratio,
+                self.is_unlabeled: 1 
+            }
+            feed.update(
+                self.vae.sample_reparametrization_variables(len(X_batch))
+            )
 
-            # batch_error, batch_loss, _, batch_lossCls = session.run(
-            #     [self.error, self.loss, self.train_step, self.classificationLoss],
-            #     feed_dict=feed
-            # )
+            batch_error, batch_loss, _, batch_lossCls = session.run(
+                 [self.error, self.loss, self.train_step, self.classificationLoss],
+                 feed_dict=feed
+            )
             # ===========      2      ===============
             
-            self.is_unlabled = False
+           
             feed = {
                 self.X: X_batch_lbl,
                 self.Y: Y_batch,
                 self.vae.kl_ratio: kl_ratio,
+                self.is_unlabeled: -1
             }
             feed.update(
                 self.vae.sample_reparametrization_variables(len(X_batch_lbl))

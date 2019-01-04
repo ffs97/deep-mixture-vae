@@ -513,7 +513,7 @@ class DatasetSS:
             labels_batch.append(self.labels[i])
             classes_batch.append(self.classes[i])
 
-            if count < self.batch_size:
+            if count < self.batch_size/10:
                 data_batch_lbl.append(self.labelData[i%self.labelPD])
                 labels_batch_lbl.append(self.labelDataLabels[i%self.labelPD])
                 classes_batch_lbl.append(self.labelDataClasses[i%self.labelPD])

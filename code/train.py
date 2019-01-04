@@ -217,7 +217,7 @@ def main(argv):
 
     test_data = Dataset(test_data, batch_size=100)
     if argv.ss:
-        train_data = DatasetSS(train_data, batch_size=100, labelPD=len(dataset.train_data))
+        train_data = DatasetSS(train_data, batch_size=100, labelPD=100)
     else:
         train_data = Dataset(train_data, batch_size=100)
 
