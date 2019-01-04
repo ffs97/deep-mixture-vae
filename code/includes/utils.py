@@ -112,6 +112,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 5
 
         dataset.input_dim = 2
+        dataset.input_shape = (None, 2)
+
         dataset.input_type = "real"
 
         dataset.sample_plot = visualization.spiral_sample_plot
@@ -140,6 +142,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 10
 
         dataset.input_dim = 784
+        dataset.input_shape = (None, 28, 28, 1)
+
         dataset.input_type = "binary"
 
         dataset.sample_plot = visualization.mnist_sample_plot
@@ -179,6 +183,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 6
 
         dataset.input_dim = 561
+        dataset.input_shape = (None, 561)
+
         dataset.input_type = "real"
 
         dataset.sample_plot = None
@@ -207,6 +213,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 10
 
         dataset.input_dim = 3072
+        dataset.input_shape = (None, 32, 32, 3)
+
         dataset.input_type = "binary"
 
         dataset.sample_plot = None
@@ -298,6 +306,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 4
 
         dataset.input_dim = 2000
+        dataset.input_shape = (None, 2000)
+
         dataset.input_type = "real"
 
         dataset.sample_plot = None
@@ -341,6 +351,8 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 4
 
         dataset.input_dim = 2000
+        dataset.input_shape = (None, 2000)
+
         dataset.input_type = "real"
 
         dataset.sample_plot = None

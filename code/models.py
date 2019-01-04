@@ -61,7 +61,6 @@ class MoE:
                 # inp2cls = tf.nn.relu(self.Z)
                 inp2cls = tf.nn.relu(self.vae.mean)
                 # self.reconstructed_Y_soft = self.vae.reconstructed_Y_soft
-                print("="*100)
             else:
                 input_dim = self.input_dim
                 inp2cls = self.X

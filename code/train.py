@@ -2,13 +2,14 @@ import os
 import math
 import models
 import argparse
+import warnings
 import base_models
 import numpy as np
 import tensorflow as tf
 import matplotlib as mpl
-from visdom import Visdom
 
 from tqdm import tqdm
+from visdom import Visdom
 
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as grid
@@ -19,6 +20,7 @@ from includes.utils import load_data, generate_regression_variable
 mpl.rc_file_defaults()
 
 tf.logging.set_verbosity(tf.logging.ERROR)
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 parser = argparse.ArgumentParser(
     description="Training file for DMVAE and DVMOE"
@@ -141,7 +143,6 @@ def main(argv):
     dataset = load_data(
         dataset, classification=classification, output_dim=output_dim
     )
-    print(dataset.input_type)
     if model_name == "":
         model_name = model_str
 
@@ -194,13 +195,13 @@ def main(argv):
 
         if model_str == "dmvae":
             model = base_models.DeepMixtureVAE(
-                model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                model_name, dataset.input_type, dataset.input_dim, dataset.input_shape, latent_dim,
+                n_clusters, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
         elif model_str == "vade":
             model = base_models.VaDE(
-                model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                model_name, dataset.input_type, dataset.input_dim, dataset.input_shape, latent_dim,
+                n_clusters, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
 
         train_data = np.concatenate(
@@ -268,42 +269,49 @@ def main(argv):
             title="Accuracy vs Time",
         )
 
-    with tqdm(range(n_epochs), postfix={"loss": "inf", "accTrain": "0.00%", "accTest": "0.00%"}) as bar:
-        max_test_acc = 0.0
+    with tqdm(range(n_epochs)) as bar:
+        bar.set_postfix({
+            "max_acc": "%.4f" % 0.0,
+            "test_acc": "%.4f" % 0.0,
+            "train_acc": "%.4f" % 0.0,
+            "loss": "%.4f" % float("inf"),
+            "clustering_acc": "%.4f" % 0.0
+        })
+
+        max_acc = 0.0
 
         anneal_term = 0.0 if kl_annealing else 1.0
 
         for epoch in bar:
+            if kl_annealing and (epoch + 1) % anneal_epochs == 0:
+                anneal_term = min(anneal_term + anneal_step, 1.0)
+
+            if epoch % save_epochs == 0:
+                if moe:
+                    test_acc, _ = model.get_accuracy(sess, test_data)
+                    train_acc, clustering_acc = model.get_accuracy(
+                        sess, train_data
+                    )
+
+                    if test_acc > max_acc:
+                        max_acc = test_acc
+                        saver.save(sess, ckpt_path)
+                else:
+                    train_acc = model.get_accuracy(sess, train_data)
+                    test_acc = model.get_accuracy(sess, test_data)
+
+                    clustering_acc = train_acc
+
+                    if clustering_acc > max_acc:
+                        max_acc = clustering_acc
+                        saver.save(sess, ckpt_path)
+
             if plotting and epoch % plot_epochs == 0:
                 if dataset.sample_plot is not None:
                     dataset.sample_plot(model, sess)
 
                 if dataset.regeneration_plot is not None:
                     dataset.regeneration_plot(model, test_data, sess)
-
-            if epoch % save_epochs == 0:
-                if debug:
-                    model.debug(sess, train_data)
-
-            if kl_annealing and (epoch + 1) % anneal_epochs == 0:
-                anneal_term = min(anneal_term + anneal_step, 1.0)
-
-            if moe:
-                loss, train_acc = model.train_op(
-                    sess, train_data, anneal_term
-                )
-                test_acc, clustering_acc = model.get_accuracy(sess, test_data)
-            else:
-                loss = model.train_op(sess, train_data, anneal_term)
-
-                train_acc = model.get_accuracy(sess, train_data)
-                test_acc = model.get_accuracy(sess, test_data)
-
-                clustering_acc = train_acc
-
-            if test_acc > max_test_acc:
-                max_test_acc = test_acc
-                saver.save(sess, ckpt_path)
 
             if visdom:
                 if epoch % 100 == 0:
@@ -324,14 +332,15 @@ def main(argv):
                         name="test", update="append", win=win, opts=options
                     )
 
+            loss = model.train_op(sess, train_data, anneal_term)
             if math.isnan(loss):
                 model.debug(sess, train_data)
 
             bar.set_postfix({
                 "loss": "%.4f" % loss,
+                "max_acc": "%.4f" % max_acc,
                 "test_acc": "%.4f" % test_acc,
                 "train_acc": "%.4f" % train_acc,
-                "max_test_acc": "%.4f" % max_test_acc,
                 "clustering_acc": "%.4f" % clustering_acc
             })
 
@@ -341,11 +350,16 @@ def main(argv):
 
     fl = open("logs/%s.txt" % model_name, "a+")
     fl.write("\n%s\n------\n" % str(argv))
-    fl.write("Max Accuracy        %.4f\n============" % max_test_acc)
+    fl.write("Max Accuracy        %.4f\n============" % max_acc)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    print(args)
+
+    if False:
+        from pprint import PrettyPrinter
+
+        pp = PrettyPrinter(indent=2)
+        pp.pprint(vars(args))
 
     main(args)
