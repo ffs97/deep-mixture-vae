@@ -137,8 +137,10 @@ class MoE:
             logits.append(batchLogits)
 
         logits = np.concatenate(logits, axis=0)
-        accClustering = get_clustering_accuracy(logits, data.classes)
-
+        try:
+           accClustering = get_clustering_accuracy(logits, data.classes)
+        except:
+           accClustering = - 1.0
         if self.classification:
             error /= data.len
             return 1 - error, accClustering
@@ -216,7 +218,7 @@ class MoE:
             #     feed_dict=feed
             # )
             # ===========      2      ===============
-
+            
             self.is_unlabled = False
             feed = {
                 self.X: X_batch_lbl,

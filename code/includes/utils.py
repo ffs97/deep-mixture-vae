@@ -469,6 +469,7 @@ class DatasetSS:
     def __init__(self, data, batch_size=100, shuffle=True, labelPD=100):
         self.data, self.classes, self.labels = data
         self.len = len(self.data)
+        self.labelPD = labelPD
 
         indices = random.sample(range(self.classes.shape[0]), labelPD)
         self.labelData = self.data[indices,:]
@@ -512,10 +513,10 @@ class DatasetSS:
             labels_batch.append(self.labels[i])
             classes_batch.append(self.classes[i])
 
-            if count < self.batch_size/10.0:
-                data_batch_lbl.append(self.labelData[i%100])
-                labels_batch_lbl.append(self.labelDataLabels[i%100])
-                classes_batch_lbl.append(self.labelDataClasses[i%100])
+            if count < self.batch_size:
+                data_batch_lbl.append(self.labelData[i%self.labelPD])
+                labels_batch_lbl.append(self.labelDataLabels[i%self.labelPD])
+                classes_batch_lbl.append(self.labelDataClasses[i%self.labelPD])
 
             count += 1
 
