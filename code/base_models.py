@@ -6,7 +6,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from sklearn.mixture import GaussianMixture
 
-from includes.network import FeedForwardNetwork, DeepNetwork
+from includes.network import FeedForwardNetwork, FeedForwardNetworkWithBN, DeepNetwork
 from includes.utils import get_clustering_accuracy
 from includes.layers import Convolution, MaxPooling
 
@@ -526,28 +526,35 @@ class VaDE(VAE):
 
 class IMSAT:
     def __init__(self, name, input_type, input_dim, input_shape, n_classes, mu=4,
-                 lam=0.2, xi=10, Ip=1, epsilon=1, activation=None, initializer=None):
+                 lam=0.2, xi=10, Ip=1, eps=1, activation=None, initializer=None):
 
         self.name = name
+
         self.input_dim = input_dim
         self.input_shape = input_shape
+
         self.input_type = input_type
-        self.n_classes = n_classes
-        self.mu = mu
-        self.lam = lam
 
         self.activation = activation
         self.initializer = initializer
 
-        self.xi = xi
-        self.Ip = Ip
-        self.epsilon = epsilon
+        self.n_classes = n_classes
 
-        self.X = None
-        self.train_step = None
+        self.path = ""
 
         self.is_training = tf.placeholder_with_default(
             True, shape=None, name="is_training"
+        )
+
+        self.mu = mu
+        self.lam = lam
+
+        self.xi = xi
+        self.Ip = Ip
+        self.eps = eps
+
+        self.is_training = tf.placeholder_with_default(
+            False, shape=None, name="is_training"
         )
 
     def build_graph(self):
@@ -560,10 +567,19 @@ class IMSAT:
                 network = DeepNetwork(
                     "layers",
                     [
-                        ("fc", {"input_dim": self.input_dim, "output_dim": 1200}),
-                        ("bn", {"is_training": self.is_training}),
-                        ("fc", {"input_dim": 1200, "output_dim": 1200}),
-                        ("bn", {"is_training": self.is_training})
+                        ("fc", {
+                            "input_dim": self.input_dim,
+                            "output_dim": 1200
+                        }),
+                        ("bn", {
+                            "input_dim": 1200, "is_training": self.is_training
+                        }),
+                        ("fc", {
+                            "input_dim": 1200, "output_dim": 1200
+                        }),
+                        ("bn", {
+                            "input_dim": 1200, "is_training": self.is_training
+                        })
                     ],
                     [
                         ("fc", {"input_dim": 1200, "output_dim": self.n_classes})
@@ -578,8 +594,8 @@ class IMSAT:
                 ul_logits = network(self.X)
 
                 d = tf.random_normal(shape=tf.shape(self.X))
-                d /= (tf.reshape(tf.sqrt(tf.reduce_sum(tf.pow(d, 2.0), axis=1)),
-                                 [-1, 1]) + 1e-16)
+                d /= (tf.reshape(tf.sqrt(tf.reduce_sum(tf.pow(d, 2.0),
+                                                       axis=1)), [-1, 1]) + 1e-16)
                 for _ in range(self.Ip):
                     y1 = ul_logits
                     y2 = network(self.X + self.xi * d)
@@ -590,7 +606,7 @@ class IMSAT:
                                                            axis=1)), [-1, 1]) + 1e-16)
 
                 self.orig_example = tf.stop_gradient(ul_logits)
-                self.adversary = network(self.X + d * self.epsilon)
+                self.adversary = network(self.X + d * self.eps)
 
         return self
 
@@ -649,10 +665,7 @@ class IMSAT:
     def get_accuracy(self, session, data):
         logits = []
         for batch in data.get_batches():
-            logits.append(session.run(self.logits, feed_dict={
-                self.X: batch,
-                self.is_training: False
-            }))
+            logits.append(session.run(self.logits, feed_dict={self.X: batch}))
 
         logits = np.concatenate(logits, axis=0)
 

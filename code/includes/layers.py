@@ -81,15 +81,27 @@ class MaxPooling(Layer):
 
 
 class BatchNormalization(Layer):
-    def __init__(self, name, is_training, activation=None, initializer=None):
+    def __init__(self, name, input_dim, is_training, activation=None, initializer=tf.contrib.layers.xavier_initializer):
         Layer.__init__(self, name, activation=activation,
                        initializer=initializer)
 
+        self.input_dim = input_dim
         self.is_training = is_training
 
+        with tf.variable_scope(self.name):
+            self.W = tf.get_variable("weight", (input_dim, input_dim),
+                                     initializer=initializer())
+
+            self.beta = tf.get_variable("beta", (input_dim,),
+                                        initializer=tf.initializers.zeros)
+            self.scale = tf.get_variable("scale", (input_dim,),
+                                         initializer=tf.initializers.ones)
+
     def _call(self, inputs):
-        outputs = tf.layers.batch_normalization(
-            inputs, training=self.is_training
+        batch_mean, batch_var = tf.nn.moments(inputs, [0])
+
+        outputs = tf.nn.batch_normalization(
+            inputs, batch_mean, batch_var, self.beta, self.scale, 1e-20
         )
 
         return outputs
