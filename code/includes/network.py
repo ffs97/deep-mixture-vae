@@ -66,11 +66,18 @@ class DeepNetwork:
                 if layer_id not in _layers_id_mapping:
                     raise NotImplementedError
 
-                self.layers.append(
-                    _layers_id_mapping[layer_id](
-                        name, activation=activation, initializer=initializer, **args
-                    )
-                )
+                if "activation" not in args.keys():
+                  self.layers.append(
+                      _layers_id_mapping[layer_id](
+                          name, activation=activation, initializer=initializer, **args
+                      )
+                  )
+                else:
+                  self.layers.append(
+                      _layers_id_mapping[layer_id](
+                          name, initializer=initializer, **args
+                      )
+                  )
 
     def __call__(self, inputs):
         with tf.name_scope(self.name):

@@ -125,8 +125,6 @@ def main(argv):
     pretrain_vae_lr = argv.pretrain_vae_lr
     pretrain_prior_lr = argv.pretrain_prior_lr
 
-    moe = model_str[-3:] == "moe"
-
     n_epochs = argv.n_epochs
 
     pretrain = args.pretrain
@@ -147,16 +145,14 @@ def main(argv):
     if model_name == "":
         model_name = model_str
 
-    if moe:
+    if model_str in ["dmoe", "vademoe", "dvmoe", "cnn"]:
+        from includes.utils import MEDataset as Dataset, DatasetSS
+
         n_experts = argv.n_experts
 
         if classification:
             output_dim = dataset.n_classes
 
-        from includes.utils import MEDataset as Dataset, DatasetSS
-
-        if model_str not in ["dmoe", "vademoe", "dvmoe"]:
-            raise NotImplementedError
 
         if model_str == "dmoe":
             model = models.DeepMoE(
@@ -164,6 +160,7 @@ def main(argv):
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
             plotting = False
+
 
         elif model_str == "dvmoe":
             model = models.DeepVariationalMoE(
@@ -177,6 +174,12 @@ def main(argv):
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
 
+        elif model_str == "cnn":
+            model = models.Supervised(
+                model_str, dataset.input_type, dataset.input_dim, output_dim, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+            ).build_graph()
+
+
         test_data = (
             dataset.test_data, dataset.test_classes, dataset.test_labels
         )
@@ -184,15 +187,13 @@ def main(argv):
             dataset.train_data, dataset.train_classes, dataset.train_labels
         )
 
-    else:
+    elif model_str in ["dmvae", "vade"]:
+        from includes.utils import Dataset, DatasetSS
+
         n_clusters = argv.n_clusters
         if n_clusters < 1:
             n_clusters = dataset.n_classes
 
-        from includes.utils import Dataset, DatasetSS
-
-        if model_str not in ["dmvae", "vade"]:
-            raise NotImplementedError
 
         if model_str == "dmvae":
             model = base_models.DeepMixtureVAE(
@@ -215,9 +216,13 @@ def main(argv):
         test_data = (dataset.test_data, dataset.test_classes)
         train_data = (train_data, train_classes)
 
+    else:
+        raise NotImplementedError
+
+
     test_data = Dataset(test_data, batch_size=100)
     if argv.ss:
-        train_data = DatasetSS(train_data, batch_size=100, labelPD=100)
+        train_data = DatasetSS(train_data, batch_size=100, labelPD=100)#len(dataset.train_data))
     else:
         train_data = Dataset(train_data, batch_size=100)
 
@@ -258,10 +263,10 @@ def main(argv):
     saver = tf.train.Saver(var_list)
     ckpt_path = model.path + "/model/parameters.ckpt"
 
-    try:
-        saver.restore(sess, ckpt_path)
-    except:
-        print("Could not load trained model")
+    #try:
+    #    saver.restore(sess, ckpt_path)
+    #except:
+    #    print("Could not load trained model")
 
     if argv.visdom:
         #######  Preparation  ############
@@ -284,6 +289,9 @@ def main(argv):
 
         for epoch in bar:
             # import pdb;pdb.set_trace()
+            if epoch == 0:
+                writer = tf.summary.FileWriter("networkViz", sess.graph)
+
             if plotting and epoch % plot_epochs == 0:
                 if dataset.sample_plot is not None:
                     dataset.sample_plot(model, sess)
@@ -298,7 +306,7 @@ def main(argv):
             if kl_annealing and (epoch + 1) % anneal_epochs == 0:
                 anneal_term = min(anneal_term + anneal_step, 1.0)
 
-            if moe:
+            if classification:
                 loss, accTrain, lossCls = model.train_op(sess, train_data, anneal_term)
                 accTest, accClsTest = model.get_accuracy(sess, test_data)
             else:
@@ -334,6 +342,8 @@ def main(argv):
                 "accClusteringTest" : "%.4f" % accClsTest
                 #"lossCls" : "%.4f" % lossCls,
             })
+
+            writer.close()
 
     if plotting:
         dataset.sample_plot(model, sess)

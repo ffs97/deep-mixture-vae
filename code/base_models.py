@@ -70,6 +70,7 @@ class VAE:
         )
 
     def define_recon_loss(self):
+        
         if self.input_type == "binary":
             self.recon_loss = tf.reduce_mean(tf.reduce_sum(
                 tf.nn.sigmoid_cross_entropy_with_logits(
@@ -148,156 +149,163 @@ class VAE:
 
 
 class DeepMixtureVAE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False, noVAE=False):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
         self.cnn = True#cnn
+        self.prog = tf.placeholder_with_default(1.0, shape=()) 
+        self.noVAE = noVAE
 
     def build_graph(self):
         with tf.variable_scope(self.name) as _:
             self.X = tf.placeholder(
                 tf.float32, shape=(None, self.input_dim), name="X"
             )
-            self.epsilon = tf.placeholder(
-                tf.float32, shape=(None, self.latent_dim), name="epsilon_Z"
-            )
-            self.cluster = tf.placeholder(
-                tf.float32, shape=(None, 1, self.n_classes), name="epsilon_C"
-            )
 
+            if self.noVAE == False:
+                self.epsilon = tf.placeholder(
+                    tf.float32, shape=(None, self.latent_dim), name="epsilon_Z"
+                )
+                self.cluster = tf.placeholder(
+                    tf.float32, shape=(None, 1, self.n_classes), name="epsilon_C"
+                )
+
+            self.prob = tf.placeholder_with_default(1.0, shape=())
             self.latent_variables = dict()
-
-            # DMVAE  - shared    1   nbn   pretrained   ->   Working???? (gpu - dmvae, 94.86)
 
             with tf.variable_scope("encoder_network"):
 
                 X_flat = tf.reshape(self.X, (-1, 28, 28, 1))
 
                 if self.cnn:
-                    encoder_network = DeepNetwork(
-                        "layers",
-                        [
-                            ("cn", {
-                                "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
-                            }),
-                            ("cn", {
-                                "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
-                            }),
-                            ("mp", {"k": 2}),
-                            ("cn", {
-                                "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
-                            }),
-                            ("cn", {
-                                "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
-                            }),
-                            ("mp", {"k": 2}),
-                            ("cn", {
-                                "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
-                            }),
-                            ("cn", {
-                                "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
-                            }),
-                            ("mp", {"k": 2}),
-                            ("fc", {"input_dim": 2048, "output_dim": 500})
-                        ],
-                        # Following for fast testing
-                        # [
-                        #     ("cn", {
-                        #         "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
-                        #     }),
-                        #     ("mp", {"k": 5}),
-                        #     ("fc", {"input_dim": 1152, "output_dim": 128})
-                        # ],
-                        activation=self.activation,
-                        initializer=self.initializer
-                    )
-                    hidden = encoder_network(X_flat)
+                    conv1 = tf.layers.conv2d(X_flat, filters=32, kernel_size=[5, 5], activation=tf.nn.relu)
+                    pool1 = tf.layers.max_pooling2d(conv1, pool_size=[2, 2], strides=2)   
+                    conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu)
+                    pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
+                    pool2_flat = tf.layers.flatten(pool2)
+                    hidden = tf.layers.dense(inputs=pool2_flat, units=256, activation=tf.nn.relu)
+                        
+                        
+                    # encoder_network = DeepNetwork(
+                    #     "layers",
+                    #     [
+                            
+                    #         ("cn", {
+                    #            "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                    #         }),
+                    #         ("cn", {
+                    #            "n_kernels": 32, "prev_n_kernels": 32, "kernel": (3, 3)
+                    #         }),
+                    #         ("mp", {"k": 2}),
+                    #         ("cn", {
+                    #            "n_kernels": 64, "prev_n_kernels": 32, "kernel": (3, 3)
+                    #         }),
+                    #         ("cn", {
+                    #            "n_kernels": 64, "prev_n_kernels": 64, "kernel": (3, 3)
+                    #         }),
+                    #         ("mp", {"k": 2}),
+                    #         ("cn", {
+                    #            "n_kernels": 128, "prev_n_kernels": 64, "kernel": (3, 3)
+                    #         }),
+                    #         ("cn", {
+                    #            "n_kernels": 128, "prev_n_kernels": 128, "kernel": (3, 3)
+                    #         }),
+                    #         ("mp", {"k": 2}),
+                    #         ("fc", {"input_dim": 2048, "output_dim": 500})
+                    #     ],
+                    #     # Following for fast testing
+                    #     # [
+                    #     #     ("cn", {
+                    #     #         "n_kernels": 32, "prev_n_kernels": 1, "kernel": (3, 3)
+                    #     #     }),
+                    #     #     ("mp", {"k": 5}),
+                    #     #     ("fc", {"input_dim": 1152, "output_dim": 128})
+                    #     # ],
+                    #     activation=self.activation,
+                    #     initializer=self.initializer
+                    # )
+                    # hidden = encoder_network(X_flat)
 
                 else:
 
                     hidden = self.X
-                    hidden = tf.layers.dense(
-                        hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
+                    hidden = tf.layers.dense(hidden, 500, activation=self.activation, kernel_initializer=self.initializer())
+                    hidden = tf.layers.dense(hidden, 500, activation=self.activation, kernel_initializer=self.initializer())
+
+                if self.noVAE == False:
+                    with tf.variable_scope("z"):
+                        hidden_z = tf.layers.dense(
+                            hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
+                        )
+
+                        self.mean = tf.layers.dense(
+                            hidden_z, self.latent_dim, activation=None, kernel_initializer=self.initializer()
+                        )
+                        self.log_var = tf.layers.dense(
+                            hidden_z, self.latent_dim, activation=None, kernel_initializer=self.initializer()
+                        )
+
+                    with tf.variable_scope("c"):
+                        hidden_c = tf.layers.dense(
+                            hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
+                        )
+
+                        self.logits = tf.layers.dense(
+                            hidden_c, self.n_classes, activation=None, kernel_initializer=self.initializer()
+                        )
+                        self.cluster_probs = tf.nn.softmax(self.logits)
+
+                dropout = tf.layers.dropout(hidden, rate=self.prog)
+                self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(inputs=dropout, units=10))
+
+            if self.noVAE == False:
+                self.latent_variables.update({
+                    "C": (
+                        priors.DiscreteFactorial(
+                            "cluster", 1, self.n_classes
+                        ), self.cluster,
+                        {"logits": self.logits}
+                    ),
+                    "Z": (
+                        priors.NormalMixtureFactorial(
+                            "representation", self.latent_dim, self.n_classes
+                        ), self.epsilon,
+                        {
+                            "mean": self.mean,
+                            "log_var": self.log_var,
+                            "weights": self.cluster_probs,
+                            "cluster_sample": False
+                        }
                     )
-                    hidden = tf.layers.dense(
-                        hidden, 500, activation=self.activation, kernel_initializer=self.initializer()
+                })
+
+                lv, eps, params = self.latent_variables["Z"]
+                self.Z = lv.inverse_reparametrize(eps, params)
+
+                with tf.variable_scope("decoder_network"):
+                    decoder_network = DeepNetwork(
+                        "layers",
+                        [
+                            ("fc", {"input_dim": self.latent_dim, "output_dim": 256}),
+                            ("fc", {"input_dim": 256, "output_dim": 256}),
+                            ("fc", {"input_dim": 256, "output_dim": 512}),
+                        ],
+                        activation=self.activation, initializer=self.initializer
+                    )
+                    hidden = decoder_network(self.Z)
+
+                    self.decoded_X = tf.layers.dense(
+                        hidden, self.input_dim, activation=None, kernel_initializer=self.initializer()
                     )
 
-
-                with tf.variable_scope("z"):
-                    hidden_z = tf.layers.dense(
-                        hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
-                    )
-
-                    self.mean = tf.layers.dense(
-                        hidden_z, self.latent_dim, activation=None, kernel_initializer=self.initializer()
-                    )
-                    self.log_var = tf.layers.dense(
-                        hidden_z, self.latent_dim, activation=None, kernel_initializer=self.initializer()
-                    )
-
-                with tf.variable_scope("c"):
-                    hidden_c = tf.layers.dense(
-                        hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
-                    )
-
-                    self.logits = tf.layers.dense(
-                        hidden_c, self.n_classes, activation=None, kernel_initializer=self.initializer()
-                    )
-                    self.cluster_probs = tf.nn.softmax(self.logits)
-
-                self.reconstructed_Y_soft = tf.layers.dense(
-                    hidden, 10, activation=tf.nn.softmax, kernel_initializer=self.initializer()
-                )
-
-
-            self.latent_variables.update({
-                "C": (
-                    priors.DiscreteFactorial(
-                        "cluster", 1, self.n_classes
-                    ), self.cluster,
-                    {"logits": self.logits}
-                ),
-                "Z": (
-                    priors.NormalMixtureFactorial(
-                        "representation", self.latent_dim, self.n_classes
-                    ), self.epsilon,
-                    {
-                        "mean": self.mean,
-                        "log_var": self.log_var,
-                        "weights": self.cluster_probs,
-                        "cluster_sample": False
-                    }
-                )
-            })
-
-            lv, eps, params = self.latent_variables["Z"]
-            self.Z = lv.inverse_reparametrize(eps, params)
-
-            with tf.variable_scope("decoder_network"):
-                decoder_network = DeepNetwork(
-                    "layers",
-                    [
-                        ("fc", {"input_dim": self.latent_dim, "output_dim": 2000}),
-                        ("fc", {"input_dim": 2000, "output_dim": 500}),
-                        ("fc", {"input_dim": 500, "output_dim": 500}),
-                    ],
-                    activation=self.activation, initializer=self.initializer
-                )
-                hidden = decoder_network(self.Z)
-
-                self.decoded_X = tf.layers.dense(
-                    hidden, self.input_dim, activation=None, kernel_initializer=self.initializer()
-                )
-
-            if self.input_type == "binary":
-                self.reconstructed_X = tf.nn.sigmoid(self.decoded_X)
-            elif self.input_type == "real":
-                self.reconstructed_X = self.decoded_X
-            else:
-                raise NotImplementedError
+ 
+  
+   
+    
+     
+      
 
         return self
 
@@ -552,12 +560,12 @@ class VaDE(VAE):
                 )
 
 
-            if self.input_type == "binary":
-                self.reconstructed_X = tf.nn.sigmoid(self.decoded_X)
-            elif self.input_type == "real":
-                self.reconstructed_X = self.decoded_X
-            else:
-                raise NotImplementedError
+            
+           
+          
+         
+        
+       
 
         return self
 
