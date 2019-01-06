@@ -58,10 +58,10 @@ class MoE:
                 shape=(self.n_classes, self.n_experts)
             )
             if self.featLearn:
-                input_dim = self.latent_dim
+                # input_dim = self.latent_dim
                 # inp2cls = tf.nn.relu(self.Z)
-                inp2cls = tf.nn.relu(self.vae.mean)
-
+                inp2cls = tf.nn.relu(self.vae.hidden)
+                input_dim = inp2cls.shape[-1]
                 print("="*100)
             else:
                 input_dim = self.input_dim
@@ -208,7 +208,7 @@ class MoE:
         for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
 
             # ===========      1      ===============
-            self.is_unlabled = True
+            
             feed = {
                 self.X: X_batch,
                 self.Y: dummy_y,
@@ -220,10 +220,10 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            #batch_error, batch_loss, _, batch_lossCls = session.run(
-            #     [self.error, self.loss, self.train_step, self.classificationLoss],
-            #     feed_dict=feed
-            #)
+            batch_error, batch_loss, _, batch_lossCls = session.run(
+                 [self.error, self.loss, self.train_step, self.classificationLoss],
+                 feed_dict=feed
+            )
             # ===========      2      ===============
             
            
@@ -248,8 +248,8 @@ class MoE:
             lossCls +=  batch_lossCls / data.epoch_len
             loss += batch_loss / data.epoch_len
             k+=1
-            # if k > 5:
-            #   break
+            if k > 3:
+               break
         if self.classification:
            batch_acc = 1 - batch_error/Y_batch.shape[0]
         else:
@@ -392,8 +392,8 @@ class handler:
             loss += batch_loss / data.epoch_len
             k+=1
 
-            # if k > 5:
-            #   break
+            if k > 3:
+              break
 
             batch_acc = 1 - batch_error/Y_batch.shape[0]
         

@@ -185,7 +185,7 @@ class DeepMixtureVAE(VAE):
                     conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu)
                     pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
                     pool2_flat = tf.layers.flatten(pool2)
-                    hidden = tf.layers.dense(inputs=pool2_flat, units=256, activation=tf.nn.relu)
+                    self.hidden = tf.layers.dense(inputs=pool2_flat, units=256, activation=tf.nn.relu)
                         
                         
                     # encoder_network = DeepNetwork(
@@ -226,18 +226,18 @@ class DeepMixtureVAE(VAE):
                     #     activation=self.activation,
                     #     initializer=self.initializer
                     # )
-                    # hidden = encoder_network(X_flat)
+                    # self.hidden = encoder_network(X_flat)
 
                 else:
 
                     hidden = self.X
                     hidden = tf.layers.dense(hidden, 500, activation=self.activation, kernel_initializer=self.initializer())
-                    hidden = tf.layers.dense(hidden, 500, activation=self.activation, kernel_initializer=self.initializer())
+                    self.hidden = tf.layers.dense(hidden, 500, activation=self.activation, kernel_initializer=self.initializer())
 
                 if self.noVAE == False:
                     with tf.variable_scope("z"):
                         hidden_z = tf.layers.dense(
-                            hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
+                            self.hidden, 128, activation=self.activation, kernel_initializer=self.initializer()
                         )
 
                         self.mean = tf.layers.dense(
@@ -249,7 +249,7 @@ class DeepMixtureVAE(VAE):
 
                     with tf.variable_scope("c"):
                         hidden_c = tf.layers.dense(
-                            hidden, 2000, activation=self.activation, kernel_initializer=self.initializer()
+                            self.hidden, 128, activation=self.activation, kernel_initializer=self.initializer()
                         )
 
                         self.logits = tf.layers.dense(
@@ -257,7 +257,7 @@ class DeepMixtureVAE(VAE):
                         )
                         self.cluster_probs = tf.nn.softmax(self.logits)
 
-                dropout = tf.layers.dropout(hidden, rate=self.prog)
+                dropout = tf.layers.dropout(self.hidden, rate=self.prog)
                 self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(inputs=dropout, units=10))
 
             if self.noVAE == False:
@@ -299,13 +299,6 @@ class DeepMixtureVAE(VAE):
                     self.decoded_X = tf.layers.dense(
                         hidden, self.input_dim, activation=None, kernel_initializer=self.initializer()
                     )
-
- 
-  
-   
-    
-     
-      
 
         return self
 

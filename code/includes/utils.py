@@ -471,11 +471,24 @@ class DatasetSS:
         self.len = len(self.data)
         self.labelPD = labelPD
 
-        indices = random.sample(range(self.classes.shape[0]), labelPD)
+        sortingInd = np.argsort(self.classes)
+        indices = [] 
+        num = -1
+        for i in range(self.classes.shape[0]):
+        
+             if self.classes[sortingInd[i]] != num:
+                 count = 0
+                 num = self.classes[sortingInd[i]]
+             if count < labelPD//self.labels.shape[-1]:
+                 indices.append(sortingInd[i])
+                 count += 1
+
+        #indices = random.sample(range(self.classes.shape[0]), labelPD)
         self.labelData = self.data[indices,:]
         self.labelDataClasses = self.classes[indices]
         self.labelDataLabels = self.labels[indices, :]
 
+        
         self.batch_size = batch_size
 
         self.shuffle = shuffle
