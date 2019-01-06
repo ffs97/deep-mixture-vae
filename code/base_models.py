@@ -12,11 +12,12 @@ from includes.layers import Convolution, MaxPooling
 
 
 class VAE:
-    def __init__(self, name, input_type, input_dim, latent_dim, activation=None, initializer=None):
+    def __init__(self, name, input_type, input_dim, latent_dim, activation=None, initializer=None, ss=False):
         self.name = name
 
         self.input_dim = input_dim
         self.latent_dim = latent_dim
+        self.ss = ss
 
         self.input_type = input_type
 
@@ -37,21 +38,39 @@ class VAE:
         self.decoded_X = None
         self.train_step = None
         self.latent_variables = dict()
+        if ss:
+            self.latent_variables_unl = dict()
+            self.decoded_X_unl = None
+            self.X_unl = None
+
 
     def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
         raise NotImplementedError
 
-    def sample_reparametrization_variables(self, n, variables=None):
+    def sample_reparametrization_variables(self, n, ss=False, variables=None):
         samples = dict()
-        if variables is None:
-            for lv, eps, _ in self.latent_variables.values():
-                if eps is not None:
-                    samples[eps] = lv.sample_reparametrization_variable(n)
+        
+        if ss:
+            if variables is None:
+                for lv, eps, _ in self.latent_variables_unl.values():
+                    if eps is not None:
+                        samples[eps] = lv.sample_reparametrization_variable(n)
+            else:
+                for var in variables:
+                    lv, eps, _ = self.latent_variables_unl[var]
+                    if eps is not None:
+                        samples[eps] = lv.sample_reparametrization_variable(n)
+
         else:
-            for var in variables:
-                lv, eps, _ = self.latent_variables[var]
-                if eps is not None:
-                    samples[eps] = lv.sample_reparametrization_variable(n)
+            if variables is None:
+                for lv, eps, _ in self.latent_variables.values():
+                    if eps is not None:
+                        samples[eps] = lv.sample_reparametrization_variable(n)
+            else:
+                for var in variables:
+                    lv, eps, _ = self.latent_variables[var]
+                    if eps is not None:
+                        samples[eps] = lv.sample_reparametrization_variable(n)
 
         return samples
 
@@ -64,27 +83,51 @@ class VAE:
         return samples
 
     def define_latent_loss(self):
-        self.latent_loss = tf.add_n(
+        self.latent_loss_lbl = tf.add_n(
             [lv.kl_from_prior(params)
              for lv, _, params in self.latent_variables.values()]
         )
+        if self.ss:
+          self.latent_loss_unl = tf.add_n(
+            [lv.kl_from_prior(params)
+             for lv, _, params in self.latent_variables_unl.values()]
+          )
+
+          self.latent_loss = self.latent_loss_lbl + self.latent_loss_unl
+        else:
+          self.latent_loss = self.latent_loss_lbl
 
     def define_recon_loss(self):
         
         if self.input_type == "binary":
-            self.recon_loss = tf.reduce_mean(tf.reduce_sum(
+            self.recon_loss_lbl = tf.reduce_mean(tf.reduce_sum(
                 tf.nn.sigmoid_cross_entropy_with_logits(
                     labels=self.X,
                     logits=self.decoded_X
                 ), axis=1
             ))
+            if self.ss:
+                self.recon_loss_unl = tf.reduce_mean(tf.reduce_sum(
+                   tf.nn.sigmoid_cross_entropy_with_logits(
+                      labels=self.X_unl,
+                      logits=self.decoded_X_unl
+                   ), axis=1
+                ))
+
         elif self.input_type == "real":
             self.recon_loss = 0.5 * tf.reduce_mean(tf.reduce_sum(
                 tf.square(self.X - self.decoded_X), axis=1
             ))
+            if self.ss:
+                self.recon_loss = 0.5 * tf.reduce_mean(tf.reduce_sum(
+                    tf.square(self.X_unl - self.decoded_X_unl), axis=1
+                ))
         else:
             raise NotImplementedError
-
+        if self.ss:
+           self.recon_loss = self.recon_loss_lbl + self.recon_loss_unl
+        else:
+           self.recon_loss = self.recon_loss_lbl
     def define_train_loss(self):
         self.define_latent_loss()
         self.define_recon_loss()
@@ -176,7 +219,7 @@ def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
     return mean, log_var
 
 def C_network(input, activation, initializer, n_classes, reuse=None, cnn=True):
-    with tf.variable_scope("c",, reuse=reuse reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("c", reuse=tf.AUTO_REUSE):
         hidden_c = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
         logits = tf.layers.dense(hidden_c, n_classes, activation=None, kernel_initializer=initializer)
         cluster_probs = tf.nn.softmax(logits)
@@ -193,14 +236,15 @@ def decoder_network(input, activation, initializer, input_dim, reuse=None, cnn=T
     return decoded_X
 
 class DeepMixtureVAE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False, noVAE=False):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False, noVAE=False, ss=False):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
-                     activation=activation, initializer=initializer)
+                     activation=activation, initializer=initializer, ss=ss)
 
         self.n_classes = n_classes
         self.cnn = True#cnn
         self.prog = tf.placeholder_with_default(1.0, shape=()) 
         self.noVAE = noVAE
+        self.ss = ss
 
     def build_graph(self):
         with tf.variable_scope(self.name) as _:
@@ -216,11 +260,22 @@ class DeepMixtureVAE(VAE):
                     tf.float32, shape=(None, 1, self.n_classes), name="epsilon_C"
                 )
 
+            if self.ss:
+                self.X_unl = tf.placeholder(
+                    tf.float32, shape=(None, self.input_dim), name="X_unl"
+                )
+                self.latent_variables_unl = dict()
+                self.epsilon_unl = tf.placeholder(
+                    tf.float32, shape=(None, self.latent_dim), name="epsilon_Z_unl"
+                )
+                self.cluster_unl = tf.placeholder(
+                    tf.float32, shape=(None, 1, self.n_classes), name="epsilon_C_unl"
+                )
+
             self.prob = tf.placeholder_with_default(1.0, shape=())
-            self.latent_variables = dict()
+            self.latent_variables = dict()     
 
             self.hidden = encoder_network(self.X, self.activation, self.initializer(), reuse=None, cnn=self.cnn)
-            self.K = encoder_network(self.X, self.activation, self.initializer(), cnn=self.cnn)
 
             if self.noVAE == False:
                 
@@ -230,18 +285,17 @@ class DeepMixtureVAE(VAE):
                 dropout = tf.layers.dropout(self.hidden, rate=self.prog)
                 self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(inputs=dropout, units=self.n_classes))
 
+
             if self.noVAE == False:
-                self.latent_variables.update({
-                    "C": (
-                        priors.DiscreteFactorial(
+                priorFac = priors.DiscreteFactorial(
                             "cluster", 1, self.n_classes
-                        ), self.cluster,
-                        {"logits": self.logits}
-                    ),
-                    "Z": (
-                        priors.NormalMixtureFactorial(
+                        )
+                priorNormal = priors.NormalMixtureFactorial(
                             "representation", self.latent_dim, self.n_classes
-                        ), self.epsilon,
+                        )
+                self.latent_variables.update({
+                    "C": (priorFac, self.cluster,{"logits": self.logits}),
+                    "Z": (priorNormal, self.epsilon,
                         {
                             "mean": self.mean,
                             "log_var": self.log_var,
@@ -255,6 +309,27 @@ class DeepMixtureVAE(VAE):
                 self.Z = lv.inverse_reparametrize(eps, params)
 
                 self.decoded_X = decoder_network(self.Z, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
+
+            if self.ss:
+                self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), cnn=self.cnn)
+                self.mean_unl, self.log_var_unl = Z_network(self.hidden_unl, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
+                self.logits_unl, self.cluster_probs_unl = C_network(self.hidden_unl, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
+
+                self.latent_variables_unl.update({
+                    "C": (priorFac, self.cluster,{"logits": self.logits_unl}),
+                    "Z": (priorNormal, self.epsilon_unl,
+                        {
+                            "mean": self.mean_unl,
+                            "log_var": self.log_var_unl,
+                            "weights": self.cluster_probs_unl,
+                            "cluster_sample": False
+                        }
+                    )
+                })
+
+                lv, eps, params = self.latent_variables_unl["Z"]
+                self.Z_unl = lv.inverse_reparametrize(eps, params)
+                self.decoded_X_unl = decoder_network(self.Z_unl, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
 
         return self
 
@@ -304,7 +379,6 @@ class DeepMixtureVAE(VAE):
                         [self.recon_loss, self.vae_train_step], feed_dict=feed
                     )
                     loss += batch_loss / data.epoch_len
-
                 bar.set_postfix({"loss": "%.4f" % loss})
 
                 if loss <= min_loss:

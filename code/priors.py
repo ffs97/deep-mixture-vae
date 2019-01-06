@@ -54,7 +54,7 @@ class NormalMixtureFactorial(LatentVariable):
         self.dim = dim
         self.n_classes = n_classes
 
-        with tf.variable_scope(self.name) as _:
+        with tf.variable_scope(self.name) as _:#, reuse=tf.AUTO_REUSE
             self.means = tf.get_variable(
                 "means", shape=(self.n_classes, self.dim), dtype=tf.float32,
                 initializer=tf.initializers.random_normal, trainable=trainable

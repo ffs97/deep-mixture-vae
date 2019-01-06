@@ -8,7 +8,7 @@ from base_models import DeepMixtureVAE, VaDE
 from includes.utils import get_clustering_accuracy
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1, cnn=1):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1, cnn=1, ss=0):
         self.name = name
 
         self.input_dim = input_dim
@@ -28,8 +28,8 @@ class MoE:
         self.lossVAE = lossVAE
 
         self.cnn = cnn
-        self.is_unlabeled = tf.placeholder(tf.int32, shape=[], name="is_unlabeled")
- 
+        self.ss = ss
+
 
     def _define_vae(self):
         raise NotImplementedError
@@ -43,6 +43,8 @@ class MoE:
             self.define_vae()
 
             self.X = self.vae.X
+            if self.ss:
+               self.X_unl = self.vae.X_unl
             self.Z = self.vae.Z
             self.Y = tf.placeholder(
                 tf.float32, shape=(None, self.n_classes), name="Y"
@@ -163,8 +165,7 @@ class MoE:
                 tf.square(self.reconstructed_Y - self.Y)
             ) * self.n_classes
 
-        self.loss = tf.cond(self.is_unlabeled > 0, lambda: 0.0, lambda: self.classificationLoss)
-        
+        self.loss = self.classificationLoss
 
         if self.lossVAE:
             
@@ -205,51 +206,62 @@ class MoE:
         loss = 0.0
         lossCls = 0.0
         k = 0
-        for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
 
-            # ===========      1      ===============
-            
-            feed = {
-                self.X: X_batch,
-                self.Y: dummy_y,
-                self.vae.kl_ratio: kl_ratio,
-                self.is_unlabeled: 1,
-                self.vae.prob: .5 
-            }
-            feed.update(
-                self.vae.sample_reparametrization_variables(len(X_batch))
-            )
+        if self.ss:
+            for ((X_batch, _, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
+                feed = {
+                    self.X: X_batch_lbl,
+                    self.X_unl : X_batch,
+                    self.Y: Y_batch,
+                    self.vae.kl_ratio: kl_ratio,
+                    self.vae.prob: .5 
+                }
+                feed.update(
+                    self.vae.sample_reparametrization_variables(len(X_batch_lbl))
+                )
+                feed.update(
+                    self.vae.sample_reparametrization_variables(len(X_batch), ss=True)
+                )
 
-            batch_error, batch_loss, _, batch_lossCls = session.run(
-                 [self.error, self.loss, self.train_step, self.classificationLoss],
-                 feed_dict=feed
-            )
-            # ===========      2      ===============
-            
+                batch_error, batch_loss, _, batch_lossCls = session.run(
+                    [self.error, self.loss, self.train_step, self.classificationLoss],
+                    feed_dict=feed
+                )
+
+                lossCls +=  batch_lossCls / data.epoch_len
+                loss += batch_loss / data.epoch_len
+
+                k+=1
+                if k > 3:
+                    break
+
+        else:
+
+            for (X_batch, Y_batch, _) in data.get_batches():
+
+                feed = {
+                    self.X: X_batch,
+                    self.Y: Y_batch,
+                    self.vae.kl_ratio: kl_ratio,
+                    self.vae.prob: .5 
+                }
+                feed.update(
+                    self.vae.sample_reparametrization_variables(len(X_batch))
+                )
+
+                batch_error, batch_loss, _, batch_lossCls = session.run(
+                    [self.error, self.loss, self.train_step, self.classificationLoss],
+                    feed_dict=feed
+                )
            
-            feed = {
-                self.X: X_batch_lbl,
-                self.Y: Y_batch,
-                self.vae.kl_ratio: kl_ratio,
-                self.is_unlabeled: -1,
-                self.vae.prob: .5
-            }
-            feed.update(
-                self.vae.sample_reparametrization_variables(len(X_batch_lbl))
-            )
-
-            batch_error, batch_loss, _, batch_lossCls = session.run(
-                [self.error, self.loss, self.train_step, self.classificationLoss],
-                feed_dict=feed
-            )
-
-            # =======================================
             
-            lossCls +=  batch_lossCls / data.epoch_len
-            loss += batch_loss / data.epoch_len
-            k+=1
-            if k > 3:
-               break
+                lossCls +=  batch_lossCls / data.epoch_len
+                loss += batch_loss / data.epoch_len
+
+                k+=1
+                if k > 3:
+                    break
+
         if self.classification:
            batch_acc = 1 - batch_error/Y_batch.shape[0]
         else:
@@ -445,15 +457,15 @@ class DeepMoE(MoE):
             ).build_graph()
 
 class DeepVariationalMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts,
-                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
+                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn, ss=ss)
 
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
                 "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
+                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn, ss=self.ss
             ).build_graph()
 
 

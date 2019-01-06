@@ -165,7 +165,7 @@ def main(argv):
         elif model_str == "dvmoe":
             model = models.DeepVariationalMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
-                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
+                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn, ss=argv.ss
             ).build_graph()
 
         elif model_str == "vademoe":
