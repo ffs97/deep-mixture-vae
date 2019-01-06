@@ -322,7 +322,7 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         p = np.random.permutation(X.shape[0])
         X = X[p]
-        Y = Y[p]
+        Y = Y[p]        
 
         split = int(0.8 * len(X))
         train_data, test_data = X[:split], X[split:]
@@ -378,15 +378,10 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 class MEDataset:
     def __init__(self, data, batch_size=100, shuffle=True):
         self.data, self.classes, self.labels = data
-
         self.shuffle = shuffle
-
         self.len = len(self.data)
-
         assert(len(self.labels) == self.len and len(self.classes) == self.len)
-
         self.batch_size = batch_size
-
         self.epoch_len = int(math.ceil(len(self.data) / batch_size))
 
     def get_batches(self):

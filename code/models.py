@@ -438,8 +438,8 @@ class Supervised(handler):
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
-                "null_vae", self.input_type, self.input_dim, -1, -1
-                , activation=self.activation, initializer=self.initializer, cnn=self.cnn, noVAE=True
+                "null_vae", self.input_type, self.input_dim, -1, self.n_classes, 
+                activation=self.activation, initializer=self.initializer, cnn=self.cnn, noVAE=True, ss=False
             ).build_graph()
 
 

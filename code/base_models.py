@@ -282,8 +282,8 @@ class DeepMixtureVAE(VAE):
                 self.mean, self.log_var = Z_network(self.hidden, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
                 self.logits, self.cluster_probs = C_network(self.hidden, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
 
-                dropout = tf.layers.dropout(self.hidden, rate=self.prog)
-                self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(inputs=dropout, units=self.n_classes))
+            dropout = tf.layers.dropout(self.hidden, rate=self.prog) 
+            self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(inputs=dropout, units=self.n_classes))
 
 
             if self.noVAE == False:
