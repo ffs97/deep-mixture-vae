@@ -1,89 +1,52 @@
 import tensorflow as tf
 
-from includes.layers import FullyConnected, Convolution, MaxPooling, BatchNormalization
+def encoder_network(input, activation, initializer, reuse=None, cnn=True):
 
+    with tf.variable_scope("encoder_network", reuse=tf.AUTO_REUSE):
+        if cnn:
+            X_flat = tf.reshape(input, (-1, 28, 28, 1))
+            conv1 = tf.layers.conv2d(X_flat, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
+            pool1 = tf.layers.max_pooling2d(conv1, pool_size=[2, 2], strides=2)   
+            conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
+            pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
+            pool2_flat = tf.layers.flatten(pool2)
+            hidden = tf.layers.dense(inputs=pool2_flat, units=256, activation=tf.nn.relu, kernel_initializer=initializer)
 
-_layers_id_mapping = {
-    "fc": FullyConnected,
-    "cn": Convolution,
-    "mp": MaxPooling,
-    "bn": BatchNormalization
-}
+        else:
 
+            hidden = tf.layers.dense(input, 500, activation=activation, kernel_initializer=initializer)
+            hidden = tf.layers.dense(hidden, 500, activation=activation, kernel_initializer=initializer)
 
-class FeedForwardNetwork:
-    def __init__(self, name, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, dropout=0.0):
-        self.name = name
-        self.keep_prob = 1 - dropout
+    return hidden
 
-        self.activation = activation
-        self.initializer = initializer
+def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
+    with tf.variable_scope("z", reuse=tf.AUTO_REUSE):
+        hidden_z = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
+        mean = tf.layers.dense(hidden_z, latent_dim, activation=None, kernel_initializer=initializer)
+        log_var = tf.layers.dense(hidden_z, latent_dim, activation=None, kernel_initializer=initializer)
 
-    def build(self, output_dims, layer_sizes, input_var, reuse=False):
-        layers = []
-        with tf.variable_scope(self.name, reuse=reuse) as _:
-            input_var = tf.layers.flatten(input_var)
+    return mean, log_var
 
-            for index, layer_size in enumerate(layer_sizes):
-                layers.append(
-                    tf.layers.dense(
-                        input_var if index == 0 else layers[index - 1],
-                        layer_size,
-                        activation=self.activation,
-                        kernel_initializer=self.initializer(),
-                        name="network_layer_" + str(index + 1)
-                    )
-                )
+def C_network(input, activation, initializer, n_classes, reuse=None, cnn=True):
+    with tf.variable_scope("c", reuse=tf.AUTO_REUSE):
+        
+        
+        
+        hidden_c = tf.layers.dense(input, 512, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(hidden_c, 256, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(hidden_c, 64, activation=activation, kernel_initializer=initializer)
+        #hidden_c = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
+        logits = tf.layers.dense(hidden_c, n_classes, activation=None, kernel_initializer=initializer)
+        cluster_probs = tf.nn.softmax(logits)
 
-            self.outputs = []
-            for name, output_dim in output_dims:
-                self.outputs.append(
-                    tf.layers.dense(
-                        layers[-1],
-                        output_dim,
-                        kernel_initializer=self.initializer(),
-                        name="network_output/" + name
-                    )
-                )
+    return cluster_probs
 
-        self.layers = layers
+def decoder_network(input, activation, initializer, input_dim, reuse=None, cnn=True):
+    with tf.variable_scope("decoder_network", reuse=tf.AUTO_REUSE):
+        hidden = tf.layers.dense(input, 256, activation=activation, kernel_initializer=initializer)
+        hidden = tf.layers.dense(hidden, 256, activation=activation, kernel_initializer=initializer)
+        hidden = tf.layers.dense(input, 512, activation=activation, kernel_initializer=initializer)
+        decoded_X = tf.layers.dense(hidden, input_dim, activation=None, kernel_initializer=initializer)
 
-        if len(self.outputs) == 1:
-            return self.outputs[0]
+    return decoded_X
 
-        return self.outputs
-
-
-class DeepNetwork:
-    def __init__(self, name, layers, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer):
-        self.name = name
-
-        self.layers = []
-        with tf.variable_scope(self.name) as _:
-            for index, (layer_id, args) in enumerate(layers):
-                name = "layer_%d" % (index + 1)
-
-                if layer_id not in _layers_id_mapping:
-                    raise NotImplementedError
-
-                if "activation" not in args.keys():
-                  self.layers.append(
-                      _layers_id_mapping[layer_id](
-                          name, activation=activation, initializer=initializer, **args
-                      )
-                  )
-                else:
-                  self.layers.append(
-                      _layers_id_mapping[layer_id](
-                          name, initializer=initializer, **args
-                      )
-                  )
-
-    def __call__(self, inputs):
-        with tf.name_scope(self.name):
-            outputs = inputs
-
-            for layer in self.layers:
-                outputs = layer(outputs)
-
-            return outputs

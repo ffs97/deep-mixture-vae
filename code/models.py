@@ -305,7 +305,7 @@ class MoE:
                 break
 
 class handler:
-    def __init__(self, name, input_type, input_dim, n_classes, activation=None, initializer=None, cnn=1):
+    def __init__(self, name, input_type, input_dim, n_classes, activation, initializer, cnn, ss):
 
         self.name = name
 
@@ -319,6 +319,7 @@ class handler:
 
         self.cnn = cnn
         self.vae = None
+        self.ss = ss
 
     def _define_vae(self):
         raise NotImplementedError
@@ -401,10 +402,15 @@ class handler:
         loss = 0.0
         lossCls = 0.0
         k = 0
-        for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
-           
+        for batch in data.get_batches():
+
+            if self.ss:
+                ((_, _, _), (X_batch, Y_batch, _)) = batch
+            else:
+                ((X_batch, Y_batch, _)) = batch
+
             feed = {
-                self.X: X_batch_lbl,
+                self.X: X_batch,
                 self.Y: Y_batch,
                 self.vae.kl_ratio: kl_ratio,
                 self.vae.prob: .5
@@ -430,7 +436,12 @@ class handler:
     def debug(self, session, data, kl_ratio=1.0):
         import pdb
 
-        for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
+        for batch in data.get_batches():
+
+            if self.ss:
+                ((_, _, _), (X_batch, Y_batch, _)) = batch
+            else:
+                ((X_batch, Y_batch, _)) = batch
 
             feed = {
                 self.X: X_batch_lbl,
@@ -448,52 +459,21 @@ class handler:
 
 class Supervised(handler):
     # if self.noVAE == False:
-    def __init__(self, name, input_type, input_dim, n_classes, activation=None, initializer=None, cnn=1):
-        handler.__init__(self, name, input_type, input_dim, n_classes, activation=activation, initializer=initializer, cnn=cnn)
+    def __init__(self, name, input_type, input_dim, n_classes, activation=None, initializer=None, cnn=1, ss=False):
+        handler.__init__(self, name, input_type, input_dim, n_classes, activation, initializer, cnn, ss)
         
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
-            self.vae = DeepMixtureVAE(
-                "null_vae", self.input_type, self.input_dim, -1, self.n_classes,  
-                activation=self.activation, initializer=self.initializer, cnn=self.cnn, noVAE=True, ss=False
+            self.vae = clusterVAE(
+                "CNN", self.input_type, self.input_dim, -1, self.n_classes, self.activation, self.initializer, self.cnn, False, noVAE=True
             ).build_graph()
 
-
-
-class DeepMoE(MoE):
-    def __init__(self, name, input_type, input_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=0, cnn=1):
-        MoE.__init__(self, name, input_type, input_dim, 1, n_classes, n_experts,
-                     classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn, cnn=cnn)
-        
-    def _define_vae(self):
-        with tf.variable_scope(self.name) as _:
-            self.vae = DeepMixtureVAE(
-                "null_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
-            ).build_graph()
-
-class DeepVariationalMoE(MoE):
+class FeatureMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0):
-        MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts,
-                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn, ss=ss)
+        MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation, initializer, featLearn, cnn, ss)
         
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
-            self.vae = DeepMixtureVAE(
-                "deep_mixture_vae", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn, ss=self.ss
+            self.vae = clusterVAE(
+                self.name, self.input_type, self.input_dim, self.latent_dim, self.n_experts, self.activation, self.initializer, self.cnn, self.ss
             ).build_graph()
-
-
-class VaDEMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
-        MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts,
-                     classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
-        
-    def _define_vae(self):
-        with tf.variable_scope(self.name) as _:
-            self.vae = VaDE(
-                "vade", self.input_type, self.input_dim, self.latent_dim,
-                self.n_experts, activation=self.activation, initializer=self.initializer, cnn=self.cnn
-            ).build_graph()
-

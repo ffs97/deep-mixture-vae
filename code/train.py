@@ -27,8 +27,6 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument("--model", type=str, default="dmvae",
                     help="Model to use [dmvae, vade, dmoe, dvmoe, vademoe]")
-parser.add_argument("--model_name", type=str, default="",
-                    help="Name of the model")
 parser.add_argument("--dataset", type=str, default="mnist",
                     help="Dataset to use [mnist, spiral, cifar10]")
 
@@ -109,7 +107,6 @@ def main(argv):
     output_dim = argv.output_dim
 
     model_str = argv.model
-    model_name = argv.model_name
 
     plot_epochs = argv.plot_epochs
     save_epochs = argv.save_epochs
@@ -143,8 +140,6 @@ def main(argv):
         dataset, classification=classification, output_dim=output_dim
     )
     print(dataset.input_type)
-    if model_name == "":
-        model_name = model_str
 
     if model_str in ["dmoe", "vademoe", "dvmoe", "cnn"]:
         from includes.utils import MEDataset as Dataset, DatasetSS
@@ -198,12 +193,12 @@ def main(argv):
 
         if model_str == "dmvae":
             model = base_models.DeepMixtureVAE(
-                model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
+                model_str, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
         elif model_str == "vade":
             model = base_models.VaDE(
-                model_name, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
+                model_str, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
 
