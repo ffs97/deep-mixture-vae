@@ -99,7 +99,8 @@ parser.add_argument("--featLearn", action="store_true", default=False,
 parser.add_argument("--ss", action="store_true", default=False,
                     help="To do semi supervised learning")
 
-
+parser.add_argument("--loading", action="store_true", default=False,
+                    help="To try loading model")
 
 def main(argv):
     dataset = argv.dataset
@@ -231,17 +232,19 @@ def main(argv):
     )
 
     if pretrain:
-        if model_str in ["dvmoe", "vademoe"]:
-            model.define_pretrain_step(
-                pretrain_vae_lr, train_data.epoch_len *
-                pretrain_decay_epochs, pretrain_decay_rate
-            )
-        elif model_str in ["dmvae", "vade"]:
-            model.define_pretrain_step(
-                pretrain_vae_lr, pretrain_prior_lr
-            )
+        #if model_str in ["dvmoe", "vademoe"]:
+        #    model.define_pretrain_step(
+        #        pretrain_vae_lr, train_data.epoch_len *
+        #        pretrain_decay_epochs, pretrain_decay_rate
+        #    )
+        #elif model_str in ["dmvae", "vade"]:
+        model.define_pretrain_step(
+           pretrain_vae_lr, pretrain_prior_lr
+        )
 
     model.path = "saved-models/%s/%s" % (dataset.datagroup, model.name)
+    if model_str in ["dvmoe", "vademoe", "cnn"]:
+       model.vae.path = model.path
     for path in [model.path + "/" + x for x in ["model", "vae", "prior"]]:
         if not os.path.exists(path):
             os.makedirs(path)
@@ -250,23 +253,24 @@ def main(argv):
     tf.global_variables_initializer().run(session=sess)
 
     if pretrain:
-        if model_str in ["dvmoe", "vademoe"]:
-            model.pretrain(
-                sess, train_data, pretrain_epochs_vae
-            )
-        elif model_str in ["dmvae", "vade"]:
-            model.pretrain(
-                sess, train_data, pretrain_epochs_vae, pretrain_epochs_prior
-            )
+        #if model_str in ["dvmoe", "vademoe"]:
+        #model.pretrain(
+        #    sess, train_data, pretrain_epochs_vae
+        #)
+        #elif model_str in ["dmvae", "vade"]:
+        model.pretrain(
+            sess, train_data, pretrain_epochs_vae, pretrain_epochs_prior
+        )
 
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
     saver = tf.train.Saver(var_list)
     ckpt_path = model.path + "/model/parameters.ckpt"
 
-    #try:
-    #    saver.restore(sess, ckpt_path)
-    #except:
-    #    print("Could not load trained model")
+    if argv.loading:
+        try:
+           saver.restore(sess, ckpt_path)
+        except:
+           print("Could not load trained model")
 
     if argv.visdom:
         #######  Preparation  ############

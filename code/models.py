@@ -60,19 +60,16 @@ class MoE:
                 shape=(self.n_classes, self.n_experts)
             )
             if self.featLearn:
-                # input_dim = self.latent_dim
-                # inp2cls = tf.nn.relu(self.Z)
+                #inp2cls = tf.nn.relu(self.vae.mean)
                 inp2cls = tf.nn.relu(self.vae.hidden)
-                input_dim = inp2cls.shape[-1]
                 print("="*100)
             else:
-                input_dim = self.input_dim
                 inp2cls = self.X
 
             self.regression_weights = tf.get_variable(
                 "regression_weights", dtype=tf.float32,
                 initializer=tf.initializers.random_normal,
-                shape=(self.n_experts, self.n_classes, input_dim)
+                shape=(self.n_experts, self.n_classes, inp2cls.shape[-1])
             )
 
             self.expert_probs = self.vae.cluster_probs
@@ -159,7 +156,7 @@ class MoE:
         if self.classification:
             self.classificationLoss = -tf.reduce_mean(tf.reduce_sum(
                 self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
-            ))*1000.0
+            ))*100000.0
         else:
             self.classificationLoss = 0.5 * tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
@@ -171,10 +168,10 @@ class MoE:
             
             self.loss += self.vae.loss
 
-    def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
-        self.vae.define_train_step(
-            init_lr, decay_steps, decay_rate
-        )
+    def define_pretrain_step(self, vae_lr, prior_lr):#init_lr, decay_steps, decay_rate=0.9):
+        self.vae.define_pretrain_step(vae_lr, prior_lr)
+        #    init_lr, decay_steps, decay_rate
+        #)
 
     def define_train_step(self, init_lr, decay_steps, decay_rate=0.9, pretrain_init_lr=None,
                           pretrain_decay_steps=None, pretrain_decay_rate=None):
@@ -191,14 +188,15 @@ class MoE:
             learning_rate=learning_rate
         ).minimize(self.loss)
 
-    def pretrain(self, session, data, n_epochs):
-        print("Pretraining Model")
-        data = Dataset((data.data, data.classes),
-                       data.batch_size, data.shuffle)
-
-        with tqdm(range(n_epochs)) as bar:
-            for _ in bar:
-                self.vae.train_op(session, data)
+    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
+         self.vae.pretrain(session, data, n_epochs_vae, n_epochs_gmm, self.ss)
+    #    print("Pretraining Model")
+    #    data = Dataset((data.data, data.classes),
+    #                   data.batch_size, data.shuffle)
+    #
+    #    with tqdm(range(n_epochs)) as bar:
+    #        for _ in bar:
+    #            self.vae.train_op(session, data)
 
     def train_op(self, session, data, kl_ratio=1.0):
         assert(self.train_step is not None)
@@ -228,8 +226,8 @@ class MoE:
                     feed_dict=feed
                 )
 
-                lossCls +=  batch_lossCls / data.epoch_len
-                loss += batch_loss / data.epoch_len
+                lossCls +=  batch_lossCls / 3#data.epoch_len
+                loss += batch_loss / 3#data.epoch_len
 
                 k+=1
                 if k > 3:
@@ -255,8 +253,8 @@ class MoE:
                 )
            
             
-                lossCls +=  batch_lossCls / data.epoch_len
-                loss += batch_loss / data.epoch_len
+                lossCls +=  batch_lossCls / 3#data.epoch_len
+                loss += batch_loss / 3#data.epoch_len
 
                 k+=1
                 if k > 3:
@@ -267,27 +265,44 @@ class MoE:
         else:
            batch_acc = - batch_error
         
+        print(loss, lossCls)
         return loss, batch_acc, lossCls
 
     def debug(self, session, data, kl_ratio=1.0):
         import pdb
 
-        for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
+        if self.ss:
+            for ((X_batch, dummy_y, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
 
-            feed = {
-                self.X: X_batch_lbl,
-                self.Y: Y_batch,
-                self.vae.kl_ratio: kl_ratio,
-                self.is_unlabeled: -1,
-                self.vae.prob: 1.0
-            }
-            feed.update(
-                self.vae.sample_reparametrization_variables(len(X_batch_lbl))
-            )
+                feed = {
+                    self.X: X_batch_lbl,
+                    self.X_unl : X_batch,
+                    self.Y: Y_batch,
+                    self.vae.kl_ratio: kl_ratio,
+                    self.vae.prob: .5 
+                }
+                feed.update(
+                    self.vae.sample_reparametrization_variables(len(X_batch_lbl))
+                )
 
-            pdb.set_trace()
+                pdb.set_trace()
 
-            break
+                break
+        else:
+            for (X_batch, Y_batch, _) in data.get_batches():
+
+                feed = {
+                    self.X: X_batch,
+                    self.Y: Y_batch,
+                    self.vae.kl_ratio: kl_ratio,
+                    self.vae.prob: .5 
+                }
+                feed.update(
+                    self.vae.sample_reparametrization_variables(len(X_batch))
+                )
+
+                pdb.set_trace()
+                break
 
 class handler:
     def __init__(self, name, input_type, input_dim, n_classes, activation=None, initializer=None, cnn=1):
@@ -400,8 +415,8 @@ class handler:
                 feed_dict=feed
             )
             
-            lossCls +=  batch_lossCls / data.epoch_len
-            loss += batch_loss / data.epoch_len
+            lossCls +=  batch_lossCls / 3#data.epoch_len
+            loss += batch_loss / 3#data.epoch_len
             k+=1
 
             if k > 3:
@@ -409,6 +424,7 @@ class handler:
 
             batch_acc = 1 - batch_error/Y_batch.shape[0]
         
+        print(lossCls, loss)
         return loss, batch_acc, lossCls
 
     def debug(self, session, data, kl_ratio=1.0):
@@ -434,11 +450,11 @@ class Supervised(handler):
     # if self.noVAE == False:
     def __init__(self, name, input_type, input_dim, n_classes, activation=None, initializer=None, cnn=1):
         handler.__init__(self, name, input_type, input_dim, n_classes, activation=activation, initializer=initializer, cnn=cnn)
-
+        
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
-                "null_vae", self.input_type, self.input_dim, -1, self.n_classes, 
+                "null_vae", self.input_type, self.input_dim, -1, self.n_classes,  
                 activation=self.activation, initializer=self.initializer, cnn=self.cnn, noVAE=True, ss=False
             ).build_graph()
 
@@ -448,7 +464,7 @@ class DeepMoE(MoE):
     def __init__(self, name, input_type, input_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=0, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, 1, n_classes, n_experts,
                      classification, activation=activation, initializer=initializer, lossVAE=0, featLearn=featLearn, cnn=cnn)
-
+        
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
@@ -460,7 +476,7 @@ class DeepVariationalMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts,
                      classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn, ss=ss)
-
+        
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = DeepMixtureVAE(
@@ -473,7 +489,7 @@ class VaDEMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts,
                      classification, activation=activation, initializer=initializer, featLearn=featLearn, cnn=cnn)
-
+        
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = VaDE(

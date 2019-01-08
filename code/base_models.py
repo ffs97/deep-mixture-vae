@@ -93,7 +93,7 @@ class VAE:
              for lv, _, params in self.latent_variables_unl.values()]
           )
 
-          self.latent_loss = self.latent_loss_lbl + self.latent_loss_unl
+          self.latent_loss = self.latent_loss_lbl# + self.latent_loss_unl
         else:
           self.latent_loss = self.latent_loss_lbl
 
@@ -125,7 +125,7 @@ class VAE:
         else:
             raise NotImplementedError
         if self.ss:
-           self.recon_loss = self.recon_loss_lbl + self.recon_loss_unl
+           self.recon_loss = self.recon_loss_lbl# + self.recon_loss_unl
         else:
            self.recon_loss = self.recon_loss_lbl
     def define_train_loss(self):
@@ -220,7 +220,13 @@ def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
 
 def C_network(input, activation, initializer, n_classes, reuse=None, cnn=True):
     with tf.variable_scope("c", reuse=tf.AUTO_REUSE):
-        hidden_c = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
+        
+        
+        
+        hidden_c = tf.layers.dense(input, 512, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(hidden_c, 256, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(hidden_c, 64, activation=activation, kernel_initializer=initializer)
+        #hidden_c = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
         logits = tf.layers.dense(hidden_c, n_classes, activation=None, kernel_initializer=initializer)
         cluster_probs = tf.nn.softmax(logits)
 
@@ -280,10 +286,10 @@ class DeepMixtureVAE(VAE):
             if self.noVAE == False:
                 
                 self.mean, self.log_var = Z_network(self.hidden, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
-                self.logits, self.cluster_probs = C_network(self.hidden, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
+                self.logits, self.cluster_probs = C_network(self.X, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
 
-            dropout = tf.layers.dropout(self.hidden, rate=self.prog) 
-            self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(inputs=dropout, units=self.n_classes))
+            #dropout = tf.layers.dropout(self.hidden, rate=self.prog) 
+            self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(self.hidden, units=self.n_classes))
 
 
             if self.noVAE == False:
@@ -306,14 +312,15 @@ class DeepMixtureVAE(VAE):
                 })
 
                 lv, eps, params = self.latent_variables["Z"]
+                
                 self.Z = lv.inverse_reparametrize(eps, params)
-
+                self.cluster_probs = lv.get_cluster_probs(self.Z)
                 self.decoded_X = decoder_network(self.Z, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
 
             if self.ss:
                 self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), cnn=self.cnn)
                 self.mean_unl, self.log_var_unl = Z_network(self.hidden_unl, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
-                self.logits_unl, self.cluster_probs_unl = C_network(self.hidden_unl, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
+                self.logits_unl, self.cluster_probs_unl = C_network(self.X_unl, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
 
                 self.latent_variables_unl.update({
                     "C": (priorFac, self.cluster,{"logits": self.logits_unl}),
@@ -341,8 +348,9 @@ class DeepMixtureVAE(VAE):
             learning_rate=vae_lr
         ).minimize(self.recon_loss)
 
+        
         prior_var_list = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/encoder_network/c"
+            tf.GraphKeys.TRAINABLE_VARIABLES, scope="dvmoe/dvmoe/dvmoe/" + self.name + "/c" ########################## Not back compatible       #################
         )
         # + tf.get_collection(
         #     tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + "/representation"
@@ -352,7 +360,7 @@ class DeepMixtureVAE(VAE):
             learning_rate=prior_lr
         ).minimize(self.latent_loss, var_list=prior_var_list)
 
-    def pretrain_vae(self, session, data, n_epochs):
+    def pretrain_vae(self, session, data, n_epochs, ss):
         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         saver = tf.train.Saver(var_list)
         ckpt_path = self.path + "/vae/parameters.ckpt"
@@ -367,6 +375,9 @@ class DeepMixtureVAE(VAE):
             for _ in bar:
                 loss = 0
                 for batch in data.get_batches():
+                    #import pdb;pdb.set_trace()
+                    if ss:
+                        batch = batch[1][0]
                     feed = {
                         self.X: batch,
                         self.epsilon: np.zeros(
@@ -385,7 +396,7 @@ class DeepMixtureVAE(VAE):
                     min_loss = loss
                     saver.save(session, ckpt_path)
 
-    def pretrain_prior(self, session, data, n_epochs):
+    def pretrain_prior(self, session, data, n_epochs, ss):
         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         saver = tf.train.Saver(var_list)
         ckpt_path = self.path + "/prior/parameters.ckpt"
@@ -397,7 +408,7 @@ class DeepMixtureVAE(VAE):
 
             if n_epochs > 0:
                 feed = {
-                    self.X: data.data
+                    self.X: data.data[:100]
                 }
                 Z = session.run(self.mean, feed_dict=feed)
 
@@ -425,6 +436,8 @@ class DeepMixtureVAE(VAE):
             for _ in bar:
                 loss = 0
                 for batch in data.get_batches():
+                    if ss:
+                       batch = batch[1][0] 
                     feed = {
                         self.X: batch,
                         self.epsilon: np.zeros(
@@ -444,14 +457,14 @@ class DeepMixtureVAE(VAE):
                     min_loss = loss
                     saver.save(session, ckpt_path)
 
-    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
+    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm, ss=0):
         assert(
             self.vae_train_step is not None and
             self.prior_train_step is not None
         )
 
-        self.pretrain_vae(session, data, n_epochs_vae)
-        self.pretrain_prior(session, data, n_epochs_gmm)
+        self.pretrain_vae(session, data, n_epochs_vae, ss)
+        self.pretrain_prior(session, data, n_epochs_gmm, ss)
 
     def get_accuracy(self, session, data):
         logits = []
@@ -465,7 +478,7 @@ class DeepMixtureVAE(VAE):
 
 class VaDE(VAE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=False):
-        VAE.__init__(self, name, input_type, input_dim, latent_dim,
+        VAE.__init__(self, name, input_type, input_dim, latent_dim, 
                      activation=activation, initializer=initializer)
 
         self.n_classes = n_classes
