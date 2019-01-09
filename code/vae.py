@@ -88,7 +88,7 @@ class VAE:
              for lv, _, params in self.latent_variables_unl.values()]
           )
 
-          self.latent_loss = self.latent_loss_lbl + self.latent_loss_unl
+          self.latent_loss = self.latent_loss_lbl# + self.latent_loss_unl
         else:
           self.latent_loss = self.latent_loss_lbl
 
@@ -120,7 +120,7 @@ class VAE:
         else:
             raise NotImplementedError
         if self.ss:
-           self.recon_loss = self.recon_loss_lbl + self.recon_loss_unl
+           self.recon_loss = self.recon_loss_lbl# + self.recon_loss_unl
         else:
            self.recon_loss = self.recon_loss_lbl
     def define_train_loss(self):

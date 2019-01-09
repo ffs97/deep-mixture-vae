@@ -165,13 +165,10 @@ class MoE:
         self.loss = self.classificationLoss
 
         if self.lossVAE:
-            
             self.loss += self.vae.loss
 
-    def define_pretrain_step(self, vae_lr, prior_lr):#init_lr, decay_steps, decay_rate=0.9):
+    def define_pretrain_step(self, vae_lr, prior_lr):
         self.vae.define_pretrain_step(vae_lr, prior_lr)
-        #    init_lr, decay_steps, decay_rate
-        #)
 
     def define_train_step(self, init_lr, decay_steps, decay_rate=0.9, pretrain_init_lr=None,
                           pretrain_decay_steps=None, pretrain_decay_rate=None):
@@ -190,13 +187,6 @@ class MoE:
 
     def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
          self.vae.pretrain(session, data, n_epochs_vae, n_epochs_gmm, self.ss)
-    #    print("Pretraining Model")
-    #    data = Dataset((data.data, data.classes),
-    #                   data.batch_size, data.shuffle)
-    #
-    #    with tqdm(range(n_epochs)) as bar:
-    #        for _ in bar:
-    #            self.vae.train_op(session, data)
 
     def train_op(self, session, data, kl_ratio=1.0):
         assert(self.train_step is not None)

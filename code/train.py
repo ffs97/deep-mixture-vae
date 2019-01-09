@@ -158,7 +158,7 @@ def main(argv):
 
         elif model_str == "cnn":
             model = models.Supervised(
-                model_str, dataset.input_type, dataset.input_dim, output_dim, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+                model_str, dataset.input_type, dataset.input_dim, output_dim, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, ss=argv.ss
             ).build_graph()
 
 
