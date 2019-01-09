@@ -3,12 +3,12 @@ import tensorflow as tf
 
 from tqdm import tqdm
 from includes.utils import Dataset
-from includes.network import FeedForwardNetwork, DeepNetwork
-from base_models import DeepMixtureVAE, VaDE
+from clusterVAE import *
+
 from includes.utils import get_clustering_accuracy
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, lossVAE=1, featLearn=1, cnn=1, ss=0):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0, lossVAE=1):
         self.name = name
 
         self.input_dim = input_dim
@@ -132,12 +132,12 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            batchLogits, batchError = session.run([self.vae.logits, self.error], feed_dict=feed)
+            batchError = session.run([self.error], feed_dict=feed)
 
-            error += batchError
-            logits.append(batchLogits)
+            error += batchError[0]
+            #logits.append(batchLogits)
 
-        logits = np.concatenate(logits, axis=0)
+        #logits = np.concatenate(logits, axis=0)
         try:
            accClustering = get_clustering_accuracy(logits, data.classes)
         except:
@@ -475,5 +475,5 @@ class FeatureMoE(MoE):
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = clusterVAE(
-                self.name, self.input_type, self.input_dim, self.latent_dim, self.n_experts, self.activation, self.initializer, self.cnn, self.ss
+                self.name, self.input_type, self.input_dim, self.latent_dim, self.n_experts, self.activation, self.initializer, self.cnn, self.ss, noVAE=False
             ).build_graph()

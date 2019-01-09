@@ -2,7 +2,8 @@ import os
 import math
 import models
 import argparse
-import base_models
+
+from clusterVAE import *
 import numpy as np
 import tensorflow as tf
 import matplotlib as mpl
@@ -147,27 +148,12 @@ def main(argv):
         n_experts = argv.n_experts
 
         if classification:
-            output_dim = dataset.n_classes
+            output_dim = dataset.n_classes 
 
-
-        if model_str == "dmoe":
-            model = models.DeepMoE(
-                model_str, dataset.input_type, dataset.input_dim, output_dim, n_experts, classification,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
-            ).build_graph()
-            plotting = False
-
-
-        elif model_str == "dvmoe":
-            model = models.DeepVariationalMoE(
+        if model_str == "dvmoe" or model_str == "vademoe":
+            model = models.FeatureMoE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
                 classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn, ss=argv.ss
-            ).build_graph()
-
-        elif model_str == "vademoe":
-            model = models.VaDEMoE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, output_dim, n_experts,
-                classification, activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer, featLearn=argv.featLearn
             ).build_graph()
 
         elif model_str == "cnn":
@@ -190,14 +176,7 @@ def main(argv):
         if n_clusters < 1:
             n_clusters = dataset.n_classes
 
-
-        if model_str == "dmvae":
-            model = base_models.DeepMixtureVAE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph()
-        elif model_str == "vade":
-            model = base_models.VaDE(
+            model = clusterVAE(
                 model_str, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
                 activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
             ).build_graph()
@@ -305,7 +284,7 @@ def main(argv):
             if kl_annealing and (epoch + 1) % anneal_epochs == 0:
                 anneal_term = min(anneal_term + anneal_step, 1.0)
 
-            if classification:
+            if model_str in ["dvmoe", "vademoe", "cnn"]: 
                 loss, accTrain, lossCls = model.train_op(sess, train_data, anneal_term)
                 accTest, accClsTest = model.get_accuracy(sess, test_data)
             else:

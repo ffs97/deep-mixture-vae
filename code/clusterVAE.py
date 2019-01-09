@@ -8,9 +8,9 @@ from sklearn.mixture import GaussianMixture
 
 from includes.utils import get_clustering_accuracy
 from vae import *
-
+from includes.network import *
 class clusterVAE(VAE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=True, noVAE=False, ss=False):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=True, ss=False, noVAE=False):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
                      activation=activation, initializer=initializer, ss=ss)
 
@@ -73,7 +73,6 @@ class clusterVAE(VAE):
                         {
                             "mean": self.mean,
                             "log_var": self.log_var,
-                            "weights": self.cluster_probs,
                             "cluster_sample": False
                         }
                     )
@@ -86,7 +85,8 @@ class clusterVAE(VAE):
                     self.cluster_probs = lv.get_cluster_probs(self.Z)
                 else:
                     self.cluster_probs = C_network(self.X, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
-
+                
+                params["weights"] = self.cluster_probs
                 self.decoded_X = decoder_network(self.Z, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
 
                 self.latent_variables.update({
@@ -99,12 +99,11 @@ class clusterVAE(VAE):
                 self.mean_unl, self.log_var_unl = Z_network(self.hidden_unl, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
 
                 self.latent_variables_unl.update({
-                    "C": (priorFac, self.cluster_unl,{"logits": self.logits_unl}),
+               
                     "Z": (priorNormal, self.epsilon_unl,
                         {
                             "mean": self.mean_unl,
-                            "log_var": self.log_var_unl,
-                            "weights": self.cluster_probs_unl,
+                            "log_var": self.log_var_unl, 
                             "cluster_sample": False
                         }
                     )
@@ -112,14 +111,20 @@ class clusterVAE(VAE):
 
                 lv, eps, params = self.latent_variables_unl["Z"]
                 self.Z_unl = lv.inverse_reparametrize(eps, params)
-                self.decoded_X_unl = decoder_network(self.Z_unl, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
                 
                 if self.vade:
-                    self.cluster_probs_unl = C_network(self.X_unl, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
-                else:
                     self.cluster_probs_unl = lv.get_cluster_probs(self.Z_unl)
+                else:
+                    self.cluster_probs_unl = C_network(self.X_unl, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
 
+                params["weights"] = self.cluster_probs_unl
+                self.decoded_X_unl = decoder_network(self.Z_unl, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
+        
+                self.latent_variables_unl.update({
+                    "C": (priorFac, self.cluster_unl,{"probs": self.cluster_probs_unl}),
+                })
         return self
+        s
 
     def define_pretrain_step(self, vae_lr, prior_lr):
         self.define_train_loss()
@@ -249,15 +254,18 @@ class clusterVAE(VAE):
     def get_accuracy(self, session, data, k=10):
         weights = []
         for _ in range(k):
-            feed = {self.X: data.data}
-            feed.update(
-                self.sample_reparametrization_variables(
-                    len(data.data), variables=["Z"]
-                )
-            )
-            weights.append(session.run(
-                self.cluster_probs, feed_dict=feed
-            ))
+            clusterProb = []
+            for batch in data.get_batches():
+               feed = {self.X: batch}
+               feed.update(
+                  self.sample_reparametrization_variables(
+                     len(batch), variables=["Z"]
+                  )
+               )
+               clusterProb.append(session.run(self.cluster_probs, feed_dict=feed))
+
+            clusterProb = np.concatenate(clusterProb, axis=0)
+            weights.append(clusterProb)
 
         weights = np.array(weights)
         weights = np.mean(weights, axis=0)
