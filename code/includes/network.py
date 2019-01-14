@@ -10,7 +10,7 @@ def encoder_network(input, activation, initializer, reuse=None, cnn=True):
             conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
             pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
             pool2_flat = tf.layers.flatten(pool2)
-            hidden = tf.layers.dense(inputs=pool2_flat, units=256, activation=tf.nn.relu, kernel_initializer=initializer)
+            hidden = tf.layers.dense(inputs=pool2_flat, units=500, activation=tf.nn.relu, kernel_initializer=initializer)
 
         else:
 
@@ -21,7 +21,7 @@ def encoder_network(input, activation, initializer, reuse=None, cnn=True):
 
 def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
     with tf.variable_scope("z", reuse=tf.AUTO_REUSE):
-        hidden_z = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
+        hidden_z = tf.layers.dense(input, 2000, activation=activation, kernel_initializer=initializer)
         mean = tf.layers.dense(hidden_z, latent_dim, activation=None, kernel_initializer=initializer)
         log_var = tf.layers.dense(hidden_z, latent_dim, activation=None, kernel_initializer=initializer)
 
@@ -30,12 +30,9 @@ def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
 def C_network(input, activation, initializer, n_classes, reuse=None, cnn=True):
     with tf.variable_scope("c", reuse=tf.AUTO_REUSE):
         
-        
-        
-        hidden_c = tf.layers.dense(input, 512, activation=activation, kernel_initializer=initializer)
-        hidden_c = tf.layers.dense(hidden_c, 256, activation=activation, kernel_initializer=initializer)
-        hidden_c = tf.layers.dense(hidden_c, 64, activation=activation, kernel_initializer=initializer)
-        #hidden_c = tf.layers.dense(input, 128, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(input, 2000, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(hidden_c, 500, activation=activation, kernel_initializer=initializer)
+        hidden_c = tf.layers.dense(hidden_c, 250, activation=activation, kernel_initializer=initializer)
         logits = tf.layers.dense(hidden_c, n_classes, activation=None, kernel_initializer=initializer)
         cluster_probs = tf.nn.softmax(logits)
 
@@ -43,9 +40,9 @@ def C_network(input, activation, initializer, n_classes, reuse=None, cnn=True):
 
 def decoder_network(input, activation, initializer, input_dim, reuse=None, cnn=True):
     with tf.variable_scope("decoder_network", reuse=tf.AUTO_REUSE):
-        hidden = tf.layers.dense(input, 256, activation=activation, kernel_initializer=initializer)
-        hidden = tf.layers.dense(hidden, 256, activation=activation, kernel_initializer=initializer)
-        hidden = tf.layers.dense(input, 512, activation=activation, kernel_initializer=initializer)
+        hidden = tf.layers.dense(input, 2000, activation=activation, kernel_initializer=initializer)
+        hidden = tf.layers.dense(hidden, 500, activation=activation, kernel_initializer=initializer)
+        hidden = tf.layers.dense(input, 500, activation=activation, kernel_initializer=initializer)
         decoded_X = tf.layers.dense(hidden, input_dim, activation=None, kernel_initializer=initializer)
 
     return decoded_X

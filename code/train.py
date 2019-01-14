@@ -205,16 +205,6 @@ def main(argv):
         init_lr, train_data.epoch_len * decay_epochs, decay_rate
     )
 
-    if pretrain:
-        #if model_str in ["dvmoe", "vademoe"]:
-        #    model.define_pretrain_step(
-        #        pretrain_vae_lr, train_data.epoch_len *
-        #        pretrain_decay_epochs, pretrain_decay_rate
-        #    )
-        #elif model_str in ["dmvae", "vade"]:
-        model.define_pretrain_step(
-           pretrain_vae_lr, pretrain_prior_lr
-        )
 
     model.path = "saved-models/%s/%s" % (dataset.datagroup, model.name)
     if model_str in ["dvmoe", "vademoe", "cnn"]:
@@ -223,18 +213,28 @@ def main(argv):
         if not os.path.exists(path):
             os.makedirs(path)
 
+    if pretrain:
+        if model_str in ["dvmoe", "vademoe"]:
+            model.define_pretrain_step(
+                pretrain_vae_lr, train_data.epoch_len * pretrain_decay_epochs, pretrain_decay_rate
+            )
+        elif model_str in ["dmvae", "vade"]:
+            model.define_pretrain_step(
+                pretrain_vae_lr, pretrain_prior_lr
+            )
+
     sess = tf.Session()
     tf.global_variables_initializer().run(session=sess)
 
     if pretrain:
-        #if model_str in ["dvmoe", "vademoe"]:
-        #model.pretrain(
-        #    sess, train_data, pretrain_epochs_vae
-        #)
-        #elif model_str in ["dmvae", "vade"]:
-        model.pretrain(
-            sess, train_data, pretrain_epochs_vae, pretrain_epochs_prior
-        )
+        if model_str in ["dvmoe", "vademoe"]:
+            model.pretrain(
+                sess, train_data, pretrain_epochs_vae
+            )
+        elif model_str in ["dmvae", "vade"]:
+            model.pretrain(
+                sess, train_data, pretrain_epochs_vae, pretrain_epochs_prior
+            )
 
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
     saver = tf.train.Saver(var_list)
@@ -288,11 +288,10 @@ def main(argv):
                 loss, accTrain, lossCls = model.train_op(sess, train_data, anneal_term)
                 accTest, accClsTest = model.get_accuracy(sess, test_data)
             else:
-                loss = model.train_op(sess, train_data, anneal_term)
-                accTrain = model.get_accuracy(sess, train_data)
+                loss, accTrain = model.train_op(sess, train_data, anneal_term)
+                # accTrain = model.get_accuracy(sess, train_data)
                 accTest = model.get_accuracy(sess, test_data)
                 accClsTest = accTest
-
 
             if accTest > maxAcc:
                 maxAcc = accTest

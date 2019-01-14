@@ -88,7 +88,7 @@ class VAE:
              for lv, _, params in self.latent_variables_unl.values()]
           )
 
-          self.latent_loss = self.latent_loss_lbl# + self.latent_loss_unl
+          self.latent_loss = self.latent_loss_lbl + self.latent_loss_unl
         else:
           self.latent_loss = self.latent_loss_lbl
 
@@ -120,7 +120,7 @@ class VAE:
         else:
             raise NotImplementedError
         if self.ss:
-           self.recon_loss = self.recon_loss_lbl# + self.recon_loss_unl
+           self.recon_loss = self.recon_loss_lbl + self.recon_loss_unl
         else:
            self.recon_loss = self.recon_loss_lbl
     def define_train_loss(self):
@@ -152,22 +152,32 @@ class VAE:
         assert(self.train_step is not None)
 
         loss = 0.0
+        clusterProb = []
         for batch in data.get_batches():
             feed = {
                 self.X: batch,
-                self.kl_ratio: kl_ratio
+                self.kl_ratio: kl_ratio,
+                self.prob: .5,
+                # self.X_unl : batch
             }
             feed.update(
                 self.sample_reparametrization_variables(len(batch))
             )
+            # feed.update(
+            #     self.sample_reparametrization_variables(len(batch), ss=True)
+            # )
 
-            batch_loss, _ = session.run(
-                [self.loss, self.train_step],
+            batch_loss, _, CP = session.run(
+                [self.loss, self.train_step, self.cluster_probs],
                 feed_dict=feed
             )
+            clusterProb.append(CP)
             loss += batch_loss / data.epoch_len
-        
-        return loss
+
+        clusterProb = np.concatenate(clusterProb, axis=0)
+        acc = get_clustering_accuracy(clusterProb, data.classes)
+
+        return loss, acc
 
     def debug(self, session, data):
         import pdb

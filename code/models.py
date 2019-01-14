@@ -121,7 +121,7 @@ class MoE:
 
     def get_accuracy(self, session, data):
         error = 0.0
-        logits = []
+        CP = []
         for X_batch, Y_batch, _ in data.get_batches():
             feed = {
                 self.X: X_batch,
@@ -132,16 +132,16 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            batchError = session.run([self.error], feed_dict=feed)
+            batchCP, batchError = session.run([self.expert_probs, self.error], feed_dict=feed)
 
-            error += batchError[0]
-            #logits.append(batchLogits)
+            error += batchError
+            CP.append(batchCP)
 
-        #logits = np.concatenate(logits, axis=0)
-        try:
-           accClustering = get_clustering_accuracy(logits, data.classes)
-        except:
-           accClustering = - 1.0
+        CP = np.concatenate(CP, axis=0)
+        accClustering = get_clustering_accuracy(CP, data.classes)
+        # try:
+        # except:
+        #    accClustering = - 1.0
         if self.classification:
             error /= data.len
             return 1 - error, accClustering
@@ -156,7 +156,7 @@ class MoE:
         if self.classification:
             self.classificationLoss = -tf.reduce_mean(tf.reduce_sum(
                 self.Y * tf.log(self.reconstructed_Y_soft + 1e-20), axis=-1
-            ))*100000.0
+            ))
         else:
             self.classificationLoss = 0.5 * tf.reduce_mean(
                 tf.square(self.reconstructed_Y - self.Y)
@@ -185,8 +185,28 @@ class MoE:
             learning_rate=learning_rate
         ).minimize(self.loss)
 
-    def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
-         self.vae.pretrain(session, data, n_epochs_vae, n_epochs_gmm, self.ss)
+    def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
+        self.vae.define_train_step(
+            init_lr, decay_steps, decay_rate
+        )
+
+    # def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
+    #     self.vae.pretrain(session, data, n_epochs_vae, n_epochs_gmm, self.ss)
+
+    def pretrain(self, session, data, n_epochs):
+        print("Pretraining Model")
+        data = Dataset((data.data, data.classes),
+                       data.batch_size, data.shuffle)
+
+        with tqdm(range(n_epochs)) as bar:
+            for _ in bar:
+                loss, acc = self.vae.train_op(session, data)
+
+                bar.set_postfix({
+                    "loss": "%.4f" % loss,
+                    "accTrain": "%.4f" % acc,
+                })
+
 
     def train_op(self, session, data, kl_ratio=1.0):
         assert(self.train_step is not None)
@@ -216,12 +236,12 @@ class MoE:
                     feed_dict=feed
                 )
 
-                lossCls +=  batch_lossCls / 3#data.epoch_len
-                loss += batch_loss / 3#data.epoch_len
+                lossCls +=  batch_lossCls / data.epoch_len
+                loss += batch_loss / data.epoch_len
 
-                k+=1
-                if k > 3:
-                    break
+                # k+=1
+                # if k > 3:
+                #     break
 
         else:
 
@@ -243,19 +263,18 @@ class MoE:
                 )
            
             
-                lossCls +=  batch_lossCls / 3#data.epoch_len
-                loss += batch_loss / 3#data.epoch_len
+                lossCls +=  batch_lossCls / data.epoch_len
+                loss += batch_loss / data.epoch_len
 
-                k+=1
-                if k > 3:
-                    break
+                # k+=1
+                # if k > 3:
+                #     break
 
         if self.classification:
-           batch_acc = 1 - batch_error/Y_batch.shape[0]
+            batch_acc = 1 - batch_error/(1.0*Y_batch.shape[0])
         else:
-           batch_acc = - batch_error
+            batch_acc = - batch_error
         
-        print(loss, lossCls)
         return loss, batch_acc, lossCls
 
     def debug(self, session, data, kl_ratio=1.0):
@@ -386,7 +405,6 @@ class handler:
             learning_rate=learning_rate
         ).minimize(self.loss)
 
-
     def train_op(self, session, data, kl_ratio=1.0):
 
         loss = 0.0
@@ -411,16 +429,17 @@ class handler:
                 feed_dict=feed
             )
             
-            lossCls +=  batch_lossCls / 3#data.epoch_len
-            loss += batch_loss / 3#data.epoch_len
+            lossCls +=  batch_lossCls
+            loss += batch_loss
             k+=1
 
-            if k > 3:
-              break
+            if k == 100/X_batch.shape[0]:
+                lossCls /= k
+                loss /= k
+                break
 
             batch_acc = 1 - batch_error/Y_batch.shape[0]
         
-        print(lossCls, loss)
         return loss, batch_acc, lossCls
 
     def debug(self, session, data, kl_ratio=1.0):

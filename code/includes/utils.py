@@ -19,20 +19,34 @@ def sample_gumbel(shape, eps=1e-20):
     return - np.log(eps - np.log(U + eps))
 
 
+# def get_clustering_accuracy(weights, classes):
+#     clusters = np.argmax(weights, axis=-1)
+
+#     n_classes = weights.shape[1]
+
+#     size = len(clusters)
+#     d = np.zeros((n_classes, n_classes), dtype=np.int32)
+
+#     for i in range(size):
+#         d[clusters[i], classes[i]] += 1
+
+#     ind = linear_assignment(d.max() - d)
+#     return sum([d[i, j] for i, j in ind]) / (size*1.0)
+
 def get_clustering_accuracy(weights, classes):
     clusters = np.argmax(weights, axis=-1)
 
-    n_classes = weights.shape[1]
+    n_clusters = weights.shape[1]
+    n_classes = np.max(classes) + 1
 
     size = len(clusters)
-    d = np.zeros((n_classes, n_classes), dtype=np.int32)
+    d = np.zeros((n_clusters, n_classes), dtype=np.int32)
 
     for i in range(size):
         d[clusters[i], classes[i]] += 1
 
     ind = linear_assignment(d.max() - d)
     return sum([d[i, j] for i, j in ind]) / (size*1.0)
-
 
 def generate_regression_variable(dataset, output_dim):
     n_experts = dataset.n_classes
