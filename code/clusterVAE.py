@@ -95,7 +95,7 @@ class clusterVAE(VAE):
 
             if self.ss:
                 self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), cnn=self.cnn)
-                self.mean_unl, self.log_var_unl = Z_network(self.hidden, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
+                self.mean_unl, self.log_var_unl = Z_network(self.hidden_unl, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
 
                 self.latent_variables_unl.update({
                
@@ -123,7 +123,6 @@ class clusterVAE(VAE):
                     "C": (priorFac, self.cluster_unl,{"probs": self.cluster_probs_unl}),
                 })
         return self
-        s
 
     def define_pretrain_step(self, vae_lr, prior_lr):
         self.define_train_loss()
@@ -190,12 +189,23 @@ class clusterVAE(VAE):
             print("Could not load trained prior parameters")
 
             if n_epochs > 0:
-                if ss:
-                    data.data = data.data[:100]
-                feed = {
-                    self.X: data.data
-                }
-                Z = session.run(self.mean, feed_dict=feed)
+
+                Z = []
+                for batch in data.get_batches():
+                    
+                    # import pdb; pdb.set_trace()
+                    # if ss:
+                    #     data = batch[1][0]
+                    # else:
+                    #     data = batch.data
+
+                    feed = {
+                        self.X: batch
+                    }
+                    Z_batch = session.run(self.mean, feed_dict=feed)
+                    Z.append(Z_batch)
+
+                Z = np.concatenate(Z, axis=0)
 
                 gmm_model = GaussianMixture(
                     n_components=self.n_classes,
@@ -243,8 +253,8 @@ class clusterVAE(VAE):
 
     def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm, ss=0):
         assert(
-            self.vae_train_step is not None and
-            self.prior_train_step is not None
+            self.vae_train_step is not None# and
+        #    self.prior_train_step is not None
         )
 
         self.pretrain_vae(session, data, n_epochs_vae, ss)

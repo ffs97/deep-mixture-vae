@@ -5,6 +5,7 @@ import scipy.sparse as sp
 import random
 from includes import visualization
 from sklearn.utils.linear_assignment_ import linear_assignment
+import tensorflow as tf
 
 
 def parse_index_file(filename):
@@ -474,9 +475,50 @@ class Dataset:
     def __len__(self):
         return self.epoch_len
 
+def augment_data(dataset, dataset_labels, dataset_classes, augementation_factor=1, use_random_rotation=True, use_random_shear=True, use_random_shift=True, use_random_crop_and_pad=True):
+	augmented_image = []
+	augmented_image_labels = []
+        augmented_image_classes = []
+
+	for num in range (0, dataset.shape[0]):
+
+		for i in range(0, augementation_factor):
+			# original image:
+			augmented_image.append(dataset[num])
+			augmented_image_labels.append(dataset_labels[num])
+                        augmented_image_classes.append(dataset_classes[num])
+			if use_random_rotation:
+				augmented_image.append(tf.contrib.keras.preprocessing.image.random_rotation(dataset[num], 20, row_axis=0, col_axis=1, channel_axis=2))
+				augmented_image_labels.append(dataset_labels[num])
+                                augmented_image_classes.append(dataset_classes[num])
+
+			if use_random_shear:
+				augmented_image.append(tf.contrib.keras.preprocessing.image.random_shear(dataset[num], 0.2, row_axis=0, col_axis=1, channel_axis=2))
+				augmented_image_labels.append(dataset_labels[num])
+                                augmented_image_classes.append(dataset_classes[num])
+
+			if use_random_shift:
+				augmented_image.append(tf.contrib.keras.preprocessing.image.random_shift(dataset[num], 0.2, 0.2, row_axis=0, col_axis=1, channel_axis=2))
+				augmented_image_labels.append(dataset_labels[num])
+                                augmented_image_classes.append(dataset_classes[num])
+
+                        #if use_random_crop_and_pad:
+                        #        augmented_image.append(tf.contrib.keras.preprocessing.image.random_crop(tf.contrib.keras.preprocessing.image.resize_image_with_pad(dataset[num], dataset[num].shape[0] + 4, dataset[num].shape[1] + 4)), dataset[num].shape)
+                        #        augmented_image_labels.append(dataset_labels[num])
+                        #        augmented_image_classes.append(dataset_classes[num])
+			
+                        #if use_random_zoom:
+			#	augmented_image.append(tf.contrib.keras.preprocessing.image.random_zoom(dataset[num], 0.9, row_axis=0, col_axis=1, channel_axis=2))
+			#	augmented_image_labels.append(dataset_labels[num])
+                        #        augmented_image_classes.append(dataset_classes[num])
+
+	return np.array(augmented_image), np.array(augmented_image_labels), np.array(augmented_image_classes)
+
 class DatasetSS:
-    def __init__(self, data, batch_size=100, shuffle=True, labelPD=100):
+    def __init__(self, data, batch_size=100, shuffle=True, labelPD=100, augmentation=1):
         self.data, self.classes, self.labels = data
+        self.aug = augmentation
+        
         self.len = len(self.data)
         self.labelPD = labelPD
 
@@ -508,19 +550,39 @@ class DatasetSS:
         # import pdb; pdb.set_trace()
 
         assert(len(self.labels) == self.len and len(self.classes) == self.len)
-
+        self.first = 1
     def get_batches(self):
+
+        
+        self.labelData = self.labelData.reshape((self.labelData.shape[0], 28, 28, 1))
+        self.data = self.data.reshape((self.data.shape[0], 28, 28, 1))
+        if self.aug:
+           self.labelDataAug, self.labelDataClassesAug, self.labelDataLabelsAug = augment_data(self.labelData, self.labelDataClasses, self.labelDataLabels, augementation_factor=1)
+        #   self.dataAug, self.labelsAug, self.classesAug = augment_data(self.data, self.labels, self.classes, augementation_factor=1)
+        else:
+           self.labelDataAug, self.labelDataClassesAug, self.labelDataLabelsAug = self.labelData, self.labelDataClasses, self.labelDataLabels
+        self.dataAug, self.labelsAug, self.classesAug = self.data, self.labels, self.classes
+
+        self.labelDataAug = self.labelDataAug.reshape((self.labelDataAug.shape[0], 28*28))
+        self.dataAug = self.dataAug.reshape((self.dataAug.shape[0], 28*28))
+        nLabel = self.labelDataAug.shape[0]
+    
         if self.shuffle:
-            indices = np.random.permutation(len(self.data))
 
-            self.data = self.data[indices]
-            self.labels = self.labels[indices]
-            self.classes = self.classes[indices]
+            if self.first:
+               print(len(self.labelDataAug), len(self.dataAug))
+               print("="*100)
+               self.first = 0
+            
+            indices = np.random.permutation(len(self.dataAug))
+            self.dataAug = self.dataAug[indices]
+            self.labelsAug = self.labelsAug[indices]
+            self.classesAug = self.classesAug[indices]
 
-            indices = np.random.permutation(len(self.labelData))
-            self.labelData = self.labelData[indices]
-            self.labelDataClasses = self.labelDataClasses[indices]
-            self.labelDataLabels = self.labelDataLabels[indices]
+            indices = np.random.permutation(len(self.labelDataAug))
+            self.labelDataAug = self.labelDataAug[indices]
+            self.labelDataClassesAug = self.labelDataClassesAug[indices]
+            self.labelDataLabelsAug = self.labelDataLabelsAug[indices] 
 
         data_batch = list()
         labels_batch = list()
@@ -531,14 +593,14 @@ class DatasetSS:
 
         count = 0
         for i in range(len(self.data)):
-            data_batch.append(self.data[i])
-            labels_batch.append(self.labels[i])
-            classes_batch.append(self.classes[i])
+            data_batch.append(self.dataAug[i])
+            labels_batch.append(self.labelsAug[i])
+            classes_batch.append(self.classesAug[i])
 
             if count < self.batch_size/10:
-                data_batch_lbl.append(self.labelData[i%self.labelPD])
-                labels_batch_lbl.append(self.labelDataLabels[i%self.labelPD])
-                classes_batch_lbl.append(self.labelDataClasses[i%self.labelPD])
+                data_batch_lbl.append(self.labelDataAug[i%nLabel])
+                labels_batch_lbl.append(self.labelDataLabelsAug[i%nLabel])
+                classes_batch_lbl.append(self.labelDataClassesAug[i%nLabel])
 
             count += 1
 

@@ -239,9 +239,9 @@ class MoE:
                 lossCls +=  batch_lossCls / data.epoch_len
                 loss += batch_loss / data.epoch_len
 
-                # k+=1
-                # if k > 3:
-                #     break
+                k+=1
+                if k > 3:
+                    break
 
         else:
 

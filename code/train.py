@@ -26,6 +26,7 @@ parser = argparse.ArgumentParser(
 )
 
 
+
 parser.add_argument("--model", type=str, default="dmvae",
                     help="Model to use [dmvae, vade, dmoe, dvmoe, vademoe]")
 parser.add_argument("--dataset", type=str, default="mnist",
@@ -65,7 +66,7 @@ parser.add_argument("--pretrain_vae_lr", type=float, default=0.0005,
                     help="Initial learning rate for pretraining the vae")
 parser.add_argument("--pretrain_decay_rate", type=float, default=0.9,
                     help="Decay rate for exponentially decaying learning rate (< 1.0) for pretraining")
-parser.add_argument("--pretrain_decay_epochs", type=int, default=25,
+parser.add_argument("--pretrain_decay_epochs", type=int, default=100,
                     help="Number of epochs between exponentially decay of learning rate for pretraining")
 
 parser.add_argument("--pretrain_prior_lr", type=float, default=0.0005,
@@ -75,7 +76,7 @@ parser.add_argument("--kl_annealing", action="store_true", default=False,
                     help="Whether to anneal the KL term while training or not")
 parser.add_argument("--anneal_step", type=float, default=0.1,
                     help="Step size for annealing")
-parser.add_argument("--anneal_epochs", type=int, default=1000,
+parser.add_argument("--anneal_epochs", type=int, default=50,
                     help="Number of epochs before annealing the KL term")
 
 parser.add_argument("--plotting", action="store_true", default=False,
@@ -141,6 +142,8 @@ def main(argv):
         dataset, classification=classification, output_dim=output_dim
     )
     print(dataset.input_type)
+
+    
 
     if model_str in ["dmoe", "vademoe", "dvmoe", "cnn"]:
         from includes.utils import MEDataset as Dataset, DatasetSS
@@ -237,11 +240,12 @@ def main(argv):
             )
 
     var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-    saver = tf.train.Saver(var_list)
+    variables_to_restore = [v for v in var_list if (v.name.split('/')[-1]!='regression_weights:0' and v.name.split('/')[-1]!='regression_biases:0')] 
+    saver = tf.train.Saver(variables_to_restore)
     ckpt_path = model.path + "/model/parameters.ckpt"
 
     if argv.loading:
-        try:
+        try: 
            saver.restore(sess, ckpt_path)
         except:
            print("Could not load trained model")
@@ -295,7 +299,7 @@ def main(argv):
 
             if accTest > maxAcc:
                 maxAcc = accTest
-                saver.save(sess, ckpt_path)
+            #    saver.save(sess, ckpt_path)
 
 
             if argv.visdom:
@@ -332,5 +336,6 @@ def main(argv):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    
     print(args)
     main(args)
