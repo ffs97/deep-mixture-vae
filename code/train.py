@@ -87,6 +87,9 @@ parser.add_argument("--plot_epochs", type=int, default=100,
 parser.add_argument("--save_epochs", type=int, default=10,
                     help="Nummber of epochs before saving model")
 
+parser.add_argument("--model_name", type=str, default="",
+                    help="name of model to save")
+
 parser.add_argument("--debug", action="store_true", default=False,
                     help="Whether to debug the models or not")
 
@@ -101,6 +104,11 @@ parser.add_argument("--ss", action="store_true", default=False,
 
 parser.add_argument("--loading", action="store_true", default=False,
                     help="To try loading model")
+
+parser.add_argument("--augmentation", action="store_true", default=False,
+                    help="To do data augmentation")
+
+
 
 def main(argv):
     dataset = argv.dataset
@@ -179,10 +187,10 @@ def main(argv):
         if n_clusters < 1:
             n_clusters = dataset.n_classes
 
-            model = clusterVAE(
-                model_str, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
-                activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
-            ).build_graph()
+        model = clusterVAE(
+            model_str, dataset.input_type, dataset.input_dim, latent_dim, n_clusters,
+            activation=tf.nn.relu, initializer=tf.contrib.layers.xavier_initializer
+        ).build_graph()
 
         train_data = np.concatenate(
             [dataset.train_data, dataset.test_data], axis=0
@@ -200,7 +208,7 @@ def main(argv):
 
     test_data = Dataset(test_data, batch_size=100)
     if argv.ss:
-        train_data = DatasetSS(train_data, batch_size=100, labelPD=100)#len(dataset.train_data))
+        train_data = DatasetSS(train_data, batch_size=100, labelPD=100, augmentation=argv.augmentation)#len(dataset.train_data))
     else:
         train_data = Dataset(train_data, batch_size=100)
 
@@ -210,6 +218,11 @@ def main(argv):
 
 
     model.path = "saved-models/%s/%s" % (dataset.datagroup, model.name)
+     
+    if len(argv.model_name):
+        model.path += "_" + argv.model_name
+
+
     if model_str in ["dvmoe", "vademoe", "cnn"]:
        model.vae.path = model.path
     for path in [model.path + "/" + x for x in ["model", "vae", "prior"]]:
@@ -299,7 +312,7 @@ def main(argv):
 
             if accTest > maxAcc:
                 maxAcc = accTest
-            #    saver.save(sess, ckpt_path)
+                saver.save(sess, ckpt_path)
 
 
             if argv.visdom:

@@ -10,6 +10,7 @@ def encoder_network(input, activation, initializer, reuse=None, cnn=True):
             conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
             pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
             pool2_flat = tf.layers.flatten(pool2)
+            # hidden = pool2_flat
             hidden = tf.layers.dense(inputs=pool2_flat, units=500, activation=tf.nn.relu, kernel_initializer=initializer)
 
         else:
