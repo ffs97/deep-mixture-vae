@@ -558,10 +558,10 @@ class DatasetSS:
         self.data = self.data.reshape((self.data.shape[0], 28, 28, 1))
         if self.aug:
             self.labelDataAug, self.labelDataClassesAug, self.labelDataLabelsAug = augment_data(self.labelData, self.labelDataClasses, self.labelDataLabels, augementation_factor=1)
-            self.dataAug, self.labelsAug, self.classesAug = augment_data(self.data, self.labels, self.classes, augementation_factor=1)
+            # self.dataAug, self.labelsAug, self.classesAug = augment_data(self.data, self.labels, self.classes, augementation_factor=1)
         else:
             self.labelDataAug, self.labelDataClassesAug, self.labelDataLabelsAug = self.labelData, self.labelDataClasses, self.labelDataLabels
-            self.dataAug, self.labelsAug, self.classesAug = self.data, self.labels, self.classes
+        self.dataAug, self.labelsAug, self.classesAug = self.data, self.labels, self.classes
 
         self.labelDataAug = self.labelDataAug.reshape((self.labelDataAug.shape[0], 28*28))
         self.dataAug = self.dataAug.reshape((self.dataAug.shape[0], 28*28))
