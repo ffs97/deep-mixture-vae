@@ -1,23 +1,33 @@
 import tensorflow as tf
 
-def encoder_network(input, activation, initializer, reuse=None, cnn=True):
-
+def encoder_network(input, activation, initializer, reuse=None, cnn=True, dataset="cifar10"):
     with tf.variable_scope("encoder_network", reuse=tf.AUTO_REUSE):
         if cnn:
-            X_flat = tf.reshape(input, (-1, 28, 28, 1))
-            conv1 = tf.layers.conv2d(X_flat, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
-            pool1 = tf.layers.max_pooling2d(conv1, pool_size=[2, 2], strides=2)   
-            conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
-            pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
-            pool2_flat = tf.layers.flatten(pool2)
-            hidden = tf.layers.dense(inputs=pool2_flat, units=500, activation=tf.nn.relu, kernel_initializer=initializer)
+            if dataset == "cifar10":
+                from tensorflow.contrib.slim.nets import resnet_v1
+                import tensorflow.contrib.slim as slim
 
+                X_flat = tf.reshape(input, (-1, 32, 32, 3))
+                with slim.arg_scope(resnet_v1.resnet_arg_scope()):
+                    features, end_points = resnet_v1.resnet_v1_50(X_flat, is_training=False)
+
+                features = tf.reshape(features, (-1, 2048))
+                hidden = tf.layers.dense(features, 1024, activation=tf.nn.relu, kernel_initializer=initializer)
+                hidden = tf.layers.dense(hidden, 500, activation=tf.nn.relu, kernel_initializer=initializer)
+                return features, hidden
+            else:
+                X_flat = tf.reshape(input, (-1, 28, 28, 1))
+                conv1 = tf.layers.conv2d(X_flat, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
+                pool1 = tf.layers.max_pooling2d(conv1, pool_size=[2, 2], strides=2)
+                conv2 = tf.layers.conv2d(pool1, filters=32, kernel_size=[5, 5], activation=tf.nn.relu, kernel_initializer=initializer)
+                pool2 = tf.layers.max_pooling2d(conv2, pool_size=[2, 2], strides=2)
+                pool2_flat = tf.layers.flatten(pool2)
+                hidden = tf.layers.dense(inputs=pool2_flat, units=500, activation=tf.nn.relu, kernel_initializer=initializer)
         else:
-
             hidden = tf.layers.dense(input, 500, activation=activation, kernel_initializer=initializer)
             hidden = tf.layers.dense(hidden, 500, activation=activation, kernel_initializer=initializer)
 
-    return hidden
+    return None, hidden
 
 def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
     with tf.variable_scope("z", reuse=tf.AUTO_REUSE):
@@ -29,7 +39,6 @@ def Z_network(input, activation, initializer, latent_dim, reuse=None, cnn=True):
 
 def C_network(input, activation, initializer, n_classes, reuse=None, cnn=True):
     with tf.variable_scope("c", reuse=tf.AUTO_REUSE):
-        
         hidden_c = tf.layers.dense(input, 2000, activation=activation, kernel_initializer=initializer)
         hidden_c = tf.layers.dense(hidden_c, 500, activation=activation, kernel_initializer=initializer)
         hidden_c = tf.layers.dense(hidden_c, 250, activation=activation, kernel_initializer=initializer)

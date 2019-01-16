@@ -9,6 +9,7 @@ from sklearn.mixture import GaussianMixture
 from includes.utils import get_clustering_accuracy
 from vae import *
 from includes.network import *
+
 class clusterVAE(VAE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, activation=None, initializer=None, cnn=True, ss=False, noVAE=False):
         VAE.__init__(self, name, input_type, input_dim, latent_dim,
@@ -16,13 +17,13 @@ class clusterVAE(VAE):
 
         self.n_classes = n_classes
         self.cnn = cnn
-        self.prog = tf.placeholder_with_default(1.0, shape=()) 
+        self.prog = tf.placeholder_with_default(1.0, shape=())
         self.noVAE = noVAE
         self.ss = ss
         if name == "vade" or name == "vademoe":
             self.vade = True
         else:
-            self.vade = False            
+            self.vade = False
 
     def build_graph(self):
         with tf.variable_scope(self.name) as _:
@@ -51,13 +52,12 @@ class clusterVAE(VAE):
                 )
 
             self.prob = tf.placeholder_with_default(1.0, shape=())
-            self.latent_variables = dict()     
+            self.latent_variables = dict()
 
-            self.hidden = encoder_network(self.X, self.activation, self.initializer(), reuse=None, cnn=self.cnn)
+            self.X_feature, self.hidden = encoder_network(self.X, self.activation, self.initializer(), reuse=None, cnn=self.cnn)
             self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(self.hidden, units=self.n_classes))
 
             if self.noVAE == False:
-                
                 self.mean, self.log_var = Z_network(self.hidden, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
 
                 priorFac = priors.DiscreteFactorial(
@@ -84,25 +84,27 @@ class clusterVAE(VAE):
                     self.cluster_probs = lv.get_cluster_probs(self.Z)
                 else:
                     self.cluster_probs = C_network(self.hidden, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
-                
+
                 params["weights"] = self.cluster_probs
-                self.decoded_X = decoder_network(self.Z, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
+
+                if self.X_feature:
+                    self.decoded_X = decoder_network(self.Z, self.activation, self.initializer(), 2048, reuse=None, cnn=self.cnn)
+                else:
+                    self.decoded_X = decoder_network(self.Z, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
 
                 self.latent_variables.update({
                     "C": (priorFac, self.cluster,{"probs": self.cluster_probs}),
                 })
-                
 
             if self.ss:
-                self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), cnn=self.cnn)
+                self.X_unl_feature, self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), cnn=self.cnn)
                 self.mean_unl, self.log_var_unl = Z_network(self.hidden_unl, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
 
                 self.latent_variables_unl.update({
-               
                     "Z": (priorNormal, self.epsilon_unl,
                         {
                             "mean": self.mean_unl,
-                            "log_var": self.log_var_unl, 
+                            "log_var": self.log_var_unl,
                             "cluster_sample": False
                         }
                     )
@@ -110,15 +112,18 @@ class clusterVAE(VAE):
 
                 lv, eps, params = self.latent_variables_unl["Z"]
                 self.Z_unl = lv.inverse_reparametrize(eps, params)
-                
                 if self.vade:
                     self.cluster_probs_unl = lv.get_cluster_probs(self.Z_unl)
                 else:
                     self.cluster_probs_unl = C_network(self.hidden_unl, self.activation, self.initializer(), self.n_classes, reuse=None, cnn=self.cnn)
 
                 params["weights"] = self.cluster_probs_unl
-                self.decoded_X_unl = decoder_network(self.Z_unl, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
-        
+
+                if self.X_unl_feature:
+                    self.decoded_X_unl = decoder_network(self.Z_unl, self.activation, self.initializer(), 2048, input_dim, reuse=None, cnn=self.cnn)
+                else:
+                    self.decoded_X_unl = decoder_network(self.Z_unl, self.activation, self.initializer(), self.input_dim, reuse=None, cnn=self.cnn)
+
                 self.latent_variables_unl.update({
                     "C": (priorFac, self.cluster_unl,{"probs": self.cluster_probs_unl}),
                 })
@@ -192,7 +197,6 @@ class clusterVAE(VAE):
 
                 Z = []
                 for batch in data.get_batches():
-                    
                     # import pdb; pdb.set_trace()
                     # if ss:
                     #     data = batch[1][0]
@@ -232,7 +236,7 @@ class clusterVAE(VAE):
         #         loss = 0
         #         for batch in data.get_batches():
         #             if ss:
-        #                batch = batch[1][0] 
+        #                batch = batch[1][0]
         #             feed = {
         #                 self.X: batch,
         #                 self.epsilon: np.zeros(
@@ -280,4 +284,3 @@ class clusterVAE(VAE):
         # weights = np.mean(weights, axis=0)
 
         return get_clustering_accuracy(clusterProb, data.classes)
-

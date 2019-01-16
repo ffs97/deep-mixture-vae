@@ -213,7 +213,6 @@ class MoE:
 
         loss = 0.0
         lossCls = 0.0
-        k = 0
 
         if self.ss:
             for ((X_batch, _, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
@@ -239,10 +238,6 @@ class MoE:
                 lossCls +=  batch_lossCls / data.epoch_len
                 loss += batch_loss / data.epoch_len
 
-                k+=1
-                if k > 3:
-                    break
-
         else:
 
             for (X_batch, Y_batch, _) in data.get_batches():
@@ -251,7 +246,7 @@ class MoE:
                     self.X: X_batch,
                     self.Y: Y_batch,
                     self.vae.kl_ratio: kl_ratio,
-                    self.vae.prob: .5 
+                    self.vae.prob: .5
                 }
                 feed.update(
                     self.vae.sample_reparametrization_variables(len(X_batch))
@@ -261,8 +256,7 @@ class MoE:
                     [self.error, self.loss, self.train_step, self.classificationLoss],
                     feed_dict=feed
                 )
-           
-            
+
                 lossCls +=  batch_lossCls / data.epoch_len
                 loss += batch_loss / data.epoch_len
 
@@ -274,7 +268,7 @@ class MoE:
             batch_acc = 1 - batch_error/(1.0*Y_batch.shape[0])
         else:
             batch_acc = - batch_error
-        
+
         return loss, batch_acc, lossCls
 
     def debug(self, session, data, kl_ratio=1.0):
@@ -428,7 +422,6 @@ class handler:
                 [self.error, self.loss, self.train_step, self.classificationLoss],
                 feed_dict=feed
             )
-            
             lossCls +=  batch_lossCls
             loss += batch_loss
             k+=1
@@ -439,7 +432,7 @@ class handler:
                 break
 
             batch_acc = 1 - batch_error/Y_batch.shape[0]
-        
+
         return loss, batch_acc, lossCls
 
     def debug(self, session, data, kl_ratio=1.0):
@@ -470,7 +463,7 @@ class Supervised(handler):
     # if self.noVAE == False:
     def __init__(self, name, input_type, input_dim, n_classes, activation=None, initializer=None, cnn=1, ss=False):
         handler.__init__(self, name, input_type, input_dim, n_classes, activation, initializer, cnn, ss)
-        
+
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = clusterVAE(
@@ -480,7 +473,7 @@ class Supervised(handler):
 class FeatureMoE(MoE):
     def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0):
         MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation, initializer, featLearn, cnn, ss)
-        
+
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
             self.vae = clusterVAE(

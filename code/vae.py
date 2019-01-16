@@ -30,13 +30,17 @@ class VAE:
 
 
         self.X = None
+        self.X_feature = None
         self.decoded_X = None
-        self.train_step = None
         self.latent_variables = dict()
+
         if ss:
             self.latent_variables_unl = dict()
             self.decoded_X_unl = None
             self.X_unl = None
+            self.X_unl_feature = None
+
+        self.train_step = None
 
 
     def build_graph(self, encoder_layer_sizes, decoder_layer_sizes):
@@ -44,7 +48,6 @@ class VAE:
 
     def sample_reparametrization_variables(self, n, ss=False, variables=None):
         samples = dict()
-        
         if ss:
             if variables is None:
                 for lv, eps, _ in self.latent_variables_unl.values():
@@ -93,36 +96,47 @@ class VAE:
           self.latent_loss = self.latent_loss_lbl
 
     def define_recon_loss(self):
-        
+        if self.X_feature is not None:
+            self.X_orig = self.X_feature
+        else:
+            self.X_orig = self.X
+
+        if self.X_unl_feature is not None:
+            self.X_unl_orig = self.X_unl_feature
+        else:
+            self.X_unl_orig = self.X_unl
+
         if self.input_type == "binary":
             self.recon_loss_lbl = tf.reduce_mean(tf.reduce_sum(
                 tf.nn.sigmoid_cross_entropy_with_logits(
-                    labels=self.X,
+                    labels=self.X_orig,
                     logits=self.decoded_X
                 ), axis=1
             ))
             if self.ss:
                 self.recon_loss_unl = tf.reduce_mean(tf.reduce_sum(
                    tf.nn.sigmoid_cross_entropy_with_logits(
-                      labels=self.X_unl,
+                      labels=self.X_unl_orig,
                       logits=self.decoded_X_unl
                    ), axis=1
                 ))
 
         elif self.input_type == "real":
             self.recon_loss = 0.5 * tf.reduce_mean(tf.reduce_sum(
-                tf.square(self.X - self.decoded_X), axis=1
+                tf.square(self.X_orig - self.decoded_X), axis=1
             ))
             if self.ss:
                 self.recon_loss = 0.5 * tf.reduce_mean(tf.reduce_sum(
-                    tf.square(self.X_unl - self.decoded_X_unl), axis=1
+                    tf.square(self.X_unl_orig - self.decoded_X_unl), axis=1
                 ))
         else:
             raise NotImplementedError
+
         if self.ss:
            self.recon_loss = self.recon_loss_lbl + self.recon_loss_unl
         else:
            self.recon_loss = self.recon_loss_lbl
+
     def define_train_loss(self):
         self.define_latent_loss()
         self.define_recon_loss()

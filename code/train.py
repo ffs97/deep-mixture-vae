@@ -288,7 +288,7 @@ def main(argv):
             if kl_annealing and (epoch + 1) % anneal_epochs == 0:
                 anneal_term = min(anneal_term + anneal_step, 1.0)
 
-            if model_str in ["dvmoe", "vademoe", "cnn"]: 
+            if model_str in ["dvmoe", "vademoe", "cnn"]:
                 loss, accTrain, lossCls = model.train_op(sess, train_data, anneal_term)
                 accTest, accClsTest = model.get_accuracy(sess, test_data)
             else:
@@ -318,7 +318,7 @@ def main(argv):
             bar.set_postfix({
                 "loss": "%.4f" % loss,
                 "accTrain": "%.4f" % accTrain,
-                "accTest" : "%.4f" % accTest,  
+                "accTest" : "%.4f" % accTest,
                 "maxAcc" : "%.4f" % maxAcc,
                 "accClusteringTest" : "%.4f" % accClsTest
                 #"lossCls" : "%.4f" % lossCls,
@@ -331,11 +331,10 @@ def main(argv):
         dataset.regeneration_plot(model, test_data, sess)
 
     fl = open(argv.model + '_logs.txt', 'a+')
-    fl.write('\n' + str(argv) + '\n------\n') 
+    fl.write('\n' + str(argv) + '\n------\n')
     fl.write('Max Accuracy        ' + str(maxAcc) + '\n============')
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    
     print(args)
     main(args)
