@@ -53,7 +53,7 @@ class clusterVAE(VAE):
             self.prob = tf.placeholder_with_default(1.0, shape=())
             self.latent_variables = dict()     
 
-            self.hidden = encoder_network(self.X, self.activation, self.initializer(), reuse=None, cnn=self.cnn)
+            self.hidden = encoder_network(self.X, self.activation, self.initializer(), self.prob, reuse=None, cnn=self.cnn)
             self.reconstructed_Y_soft = tf.nn.softmax(tf.layers.dense(self.hidden, units=self.n_classes))
 
             if self.noVAE == False:
@@ -94,7 +94,7 @@ class clusterVAE(VAE):
                 
 
             if self.ss:
-                self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), cnn=self.cnn)
+                self.hidden_unl = encoder_network(self.X_unl, self.activation, self.initializer(), self.prob, cnn=self.cnn)
                 self.mean_unl, self.log_var_unl = Z_network(self.hidden_unl, self.activation, self.initializer(), self.latent_dim, reuse=None, cnn=self.cnn)
 
                 self.latent_variables_unl.update({
@@ -265,7 +265,8 @@ class clusterVAE(VAE):
         # for _ in range(k):
         clusterProb = []
         for batch in data.get_batches():
-            feed = {self.X: batch}
+            feed = {self.X: batch,
+                    self.prob: 0.0}
             feed.update(
                 self.sample_reparametrization_variables(
                     len(batch), variables=["Z"]

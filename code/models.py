@@ -369,7 +369,7 @@ class handler:
             feed = {
                 self.X: X_batch,
                 self.Y: Y_batch,
-                self.vae.prob: 1.0
+                self.vae.prob: 0.0
             }
 
             batchError = session.run(self.error, feed_dict=feed)

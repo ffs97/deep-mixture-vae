@@ -6,7 +6,7 @@ import random
 from includes import visualization
 from sklearn.utils.linear_assignment_ import linear_assignment
 import tensorflow as tf
-
+from sklearn.metrics import accuracy_score
 
 def parse_index_file(filename):
     index = []
@@ -48,6 +48,35 @@ def get_clustering_accuracy(weights, classes):
 
     ind = linear_assignment(d.max() - d)
     return sum([d[i, j] for i, j in ind]) / (size*1.0)
+
+def get_clustering_accuracy(y_pred, y_true):
+    """Purity score
+        Args:
+            y_true(np.ndarray): n*1 matrix Ground truth labels
+            y_pred(np.ndarray): n*1 matrix Predicted clusters
+
+        Returns:
+            float: Purity score
+    """
+
+    y_pred = np.argmax(y_pred, axis=-1)
+
+    y_voted_labels = np.zeros(y_true.shape)
+
+    labels = np.unique(y_true)
+    ordered_labels = np.arange(labels.shape[0])
+    for k in range(labels.shape[0]):
+        y_true[y_true==labels[k]] = ordered_labels[k]
+
+    labels = np.unique(y_true)
+    bins = np.concatenate((labels, [np.max(labels)+1]), axis=0)
+
+    for cluster in np.unique(y_pred):
+        hist, _ = np.histogram(y_true[y_pred==cluster], bins=bins)
+        winner = np.argmax(hist)
+        y_voted_labels[y_pred==cluster] = winner
+
+    return accuracy_score(y_true, y_voted_labels)
 
 def generate_regression_variable(dataset, output_dim):
     n_experts = dataset.n_classes
