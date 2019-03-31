@@ -8,7 +8,7 @@ from clusterVAE import *
 from includes.utils import get_clustering_accuracy
 
 class MoE:
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0, lossVAE=1):
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0, noLossVAE=0):
         self.name = name
 
         self.input_dim = input_dim
@@ -25,7 +25,7 @@ class MoE:
 
         self.vae = None
         self.featLearn = featLearn
-        self.lossVAE = lossVAE
+        self.lossVAE = 1 - int(noLossVAE)
 
         self.cnn = cnn
         self.ss = ss
@@ -42,6 +42,7 @@ class MoE:
         with tf.variable_scope(self.name) as _:
             self.define_vae()
 
+
             self.X = self.vae.X
             if self.ss:
                self.X_unl = self.vae.X_unl
@@ -49,10 +50,7 @@ class MoE:
             self.Y = tf.placeholder(
                 tf.float32, shape=(None, self.n_classes), name="Y"
             )
-
-            # self.logits = self.vae.logits
-
-            #self.reconstructed_X = self.vae.reconstructed_X
+   
 
             self.regression_biases = tf.get_variable(
                 "regression_biases", dtype=tf.float32,
@@ -99,8 +97,8 @@ class MoE:
                     ), self.n_classes
                 )
 
-                self.error = tf.reduce_sum(
-                    tf.abs(self.Y - self.reconstructed_Y)
+                self.error = 100*tf.reduce_mean(
+                    tf.reduce_sum(tf.abs(self.Y - self.reconstructed_Y), axis=-1)
                 ) / 2
             else:
                 self.reconstructed_Y = tf.reduce_sum(
@@ -132,7 +130,7 @@ class MoE:
                 self.vae.sample_reparametrization_variables(len(X_batch))
             )
 
-            batchCP, batchError = session.run([self.expert_probs, self.error], feed_dict=feed)
+            sumOp, batchCP, batchError = session.run([self.summary_op_test,self.expert_probs, self.error], feed_dict=feed)
 
             error += batchError
             CP.append(batchCP)
@@ -143,12 +141,12 @@ class MoE:
         # except:
         #    accClustering = - 1.0
         if self.classification:
-            error /= data.len
-            return 1 - error, accClustering
+            error /= data.epoch_len 
+            return 100 - error, accClustering, sumOp
 
         else:
             error /= data.epoch_len
-            return -error, accClustering
+            return - error, accClustering, sumOp
 
     def define_train_loss(self):
         self.vae.define_train_loss()
@@ -163,59 +161,65 @@ class MoE:
             ) * self.n_classes
 
         self.loss = self.classificationLoss
-
-        if self.lossVAE:
-            self.loss += self.vae.loss
+	if self.lossVAE:
+	    self.loss += self.vae.loss
+        
+	tf.summary.scalar('Classification error ', self.error)
+	self.summary_op_test = tf.summary.merge_all()
+        tf.summary.scalar('Model Loss (BCE)', self.loss)
+	tf.summary.scalar('reconLoss', self.vae.recon_loss)
+	tf.summary.scalar('KLLoss', self.vae.latent_loss)
+	self.summary_op = tf.summary.merge_all()
 
     def define_pretrain_step(self, vae_lr, prior_lr):
-        self.vae.define_pretrain_step(vae_lr, prior_lr)
+	self.vae.define_pretrain_step(vae_lr, prior_lr)
 
     def define_train_step(self, init_lr, decay_steps, decay_rate=0.9, pretrain_init_lr=None,
-                          pretrain_decay_steps=None, pretrain_decay_rate=None):
-        self.define_train_loss()
+			  pretrain_decay_steps=None, pretrain_decay_rate=None):
+	self.define_train_loss()
 
-        learning_rate = tf.train.exponential_decay(
-            learning_rate=init_lr,
-            global_step=0,
-            decay_steps=decay_steps,
-            decay_rate=decay_rate
-        )
+	learning_rate = tf.train.exponential_decay(
+	    learning_rate=init_lr,
+	    global_step=0,
+	    decay_steps=decay_steps,
+	    decay_rate=decay_rate
+	)
 
-        self.train_step = tf.train.AdamOptimizer(
-            learning_rate=learning_rate
-        ).minimize(self.loss)
+	self.train_step = tf.train.AdamOptimizer(
+	    learning_rate=learning_rate
+	).minimize(self.loss)
 
     def define_pretrain_step(self, init_lr, decay_steps, decay_rate=0.9):
-        self.vae.define_train_step(
-            init_lr, decay_steps, decay_rate
-        )
+	self.vae.define_train_step(
+	    init_lr, decay_steps, decay_rate
+	)
 
     # def pretrain(self, session, data, n_epochs_vae, n_epochs_gmm):
     #     self.vae.pretrain(session, data, n_epochs_vae, n_epochs_gmm, self.ss)
 
     def pretrain(self, session, data, n_epochs):
-        print("Pretraining Model")
-        data = Dataset((data.data, data.classes),
-                       data.batch_size, data.shuffle)
+	print("Pretraining Model")
+	data = Dataset((data.data, data.classes),
+		       data.batch_size, data.shuffle)
 
-        with tqdm(range(n_epochs)) as bar:
-            for _ in bar:
-                loss, acc = self.vae.train_op(session, data)
+	with tqdm(range(n_epochs)) as bar:
+	    for _ in bar:
+		loss, acc = self.vae.train_op(session, data)
 
-                bar.set_postfix({
-                    "loss": "%.4f" % loss,
-                    "accTrain": "%.4f" % acc,
-                })
+		bar.set_postfix({
+		    "loss": "%.4f" % loss,
+		    "accTrain": "%.4f" % acc,
+		})
 
 
     def train_op(self, session, data, kl_ratio=1.0):
-        assert(self.train_step is not None)
+	assert(self.train_step is not None)
 
-        loss = 0.0
-        lossCls = 0.0
-        k = 0
+	loss = 0.0
+	lossCls = 0.0
+	k = 0
 
-        if self.ss:
+	if self.ss:
             for ((X_batch, _, _), (X_batch_lbl, Y_batch, _)) in data.get_batches():
                 feed = {
                     self.X: X_batch_lbl,
@@ -231,8 +235,8 @@ class MoE:
                     self.vae.sample_reparametrization_variables(len(X_batch), ss=True)
                 )
 
-                batch_error, batch_loss, _, batch_lossCls = session.run(
-                    [self.error, self.loss, self.train_step, self.classificationLoss],
+                sumOp, batch_error, batch_loss, _, batch_lossCls = session.run(
+                    [self.summary_op, self.error, self.loss, self.train_step, self.classificationLoss],
                     feed_dict=feed
                 )
 
@@ -257,8 +261,8 @@ class MoE:
                     self.vae.sample_reparametrization_variables(len(X_batch))
                 )
 
-                batch_error, batch_loss, _, batch_lossCls = session.run(
-                    [self.error, self.loss, self.train_step, self.classificationLoss],
+                sumOp, batch_error, batch_loss, _, batch_lossCls = session.run(
+                    [self.summary_op, self.error, self.loss, self.train_step, self.classificationLoss],
                     feed_dict=feed
                 )
            
@@ -271,11 +275,11 @@ class MoE:
                 #     break
 
         if self.classification:
-            batch_acc = 1 - batch_error/(1.0*Y_batch.shape[0])
+            batch_acc = 100 - batch_error
         else:
             batch_acc = - batch_error
         
-        return loss, batch_acc, lossCls
+        return loss, batch_acc, lossCls, sumOp
 
     def debug(self, session, data, kl_ratio=1.0):
         import pdb
@@ -478,8 +482,8 @@ class Supervised(handler):
             ).build_graph()
 
 class FeatureMoE(MoE):
-    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0):
-        MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation, initializer, featLearn, cnn, ss)
+    def __init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation=None, initializer=None, featLearn=1, cnn=1, ss=0, noLossVAE=0):
+        MoE.__init__(self, name, input_type, input_dim, latent_dim, n_classes, n_experts, classification, activation, initializer, featLearn, cnn, ss, noLossVAE)
         
     def _define_vae(self):
         with tf.variable_scope(self.name) as _:
