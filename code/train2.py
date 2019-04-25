@@ -84,7 +84,7 @@ parser.add_argument("--anneal_epochs", type=int, default=1000,
 
 parser.add_argument("--plotting", action="store_true", default=False,
                     help="Whether to generate sampling and regeneration plots")
-parser.add_argument("--plot_epochs", type=int, default=10,
+parser.add_argument("--plot_epochs", type=int, default=100,
                     help="Nummber of epochs before generating plots")
 
 parser.add_argument("--save_epochs", type=int, default=10,

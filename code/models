@@ -1,0 +1,2 @@
+> python3 train.py --model dmvaeimsat --model_name admvae --save_epochs 1 --dataset mnist --n_epochs 1 --decay_epochs 25 --init_lr 0.001
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [loss=88.4168, train_acc=0.9455, test_acc=0.9484, clustering_acc=0.9455, max_acc=0.9455]

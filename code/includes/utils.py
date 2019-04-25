@@ -22,10 +22,11 @@ def sample_gumbel(shape, eps=1e-20):
 def get_clustering_accuracy(weights, classes):
     clusters = np.argmax(weights, axis=-1)
 
-    n_classes = weights.shape[1]
+    n_clusters = weights.shape[1]
+    n_classes = np.max(classes) + 1
 
     size = len(clusters)
-    d = np.zeros((n_classes, n_classes), dtype=np.int32)
+    d = np.zeros((n_clusters, n_classes), dtype=np.int32)
 
     for i in range(size):
         d[clusters[i], classes[i]] += 1
@@ -74,7 +75,7 @@ def generate_classification_variables(dataset):
     return train_labels, test_labels
 
 
-def load_data(datagroup, output_dim=1, classification=True, **args):
+def load_data(datagroup, output_dim=1, labels=False, classification=True, ss=False, num_labels=100, **args):
     def spiral(N_tr=5000, N_ts=1000, D=2, K=5):
         class SpiralDataset:
             pass
@@ -112,7 +113,9 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 5
 
         dataset.input_dim = 2
-        dataset.input_shape = (None, 2)
+        dataset.input_shape = (-1, 2)
+
+        dataset.regularization_weight = 1.0
 
         dataset.input_type = "real"
 
@@ -136,13 +139,21 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.test_data = mnist.test.images
         dataset.test_classes = mnist.test.labels
 
-        dataset.train_data = mnist.train.images
-        dataset.train_classes = mnist.train.labels
+        train_data, train_classes = mnist.train.images, mnist.train.labels
+
+        p = np.random.permutation(train_data.shape[0])
+        train_data = train_data[p]
+        train_classes = train_classes[p]
+
+        dataset.train_data = train_data
+        dataset.train_classes = train_classes
 
         dataset.n_classes = 10
 
         dataset.input_dim = 784
-        dataset.input_shape = (None, 28, 28, 1)
+        dataset.input_shape = (-1, 28, 28, 1)
+
+        dataset.regularization_weight = 5.0
 
         dataset.input_type = "binary"
 
@@ -183,7 +194,9 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 6
 
         dataset.input_dim = 561
-        dataset.input_shape = (None, 561)
+        dataset.input_shape = (-1, 561)
+
+        dataset.regularization_weight = 1.0
 
         dataset.input_type = "real"
 
@@ -202,6 +215,10 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
 
         (train_data, train_classes), (test_data, test_classes) = load_data()
 
+        p = np.random.permutation(train_data.shape[0])
+        train_data = train_data[p]
+        train_classes = train_classes[p]
+
         dataset.datagroup = "cifar10"
 
         dataset.test_classes = test_classes
@@ -213,7 +230,9 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 10
 
         dataset.input_dim = 3072
-        dataset.input_shape = (None, 32, 32, 3)
+        dataset.input_shape = (-1, 32, 32, 3)
+
+        dataset.regularization_weight = 1.0
 
         dataset.input_type = "binary"
 
@@ -306,7 +325,9 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 4
 
         dataset.input_dim = 2000
-        dataset.input_shape = (None, 2000)
+        dataset.input_shape = (-1, 2000)
+
+        dataset.regularization_weight = 1.0
 
         dataset.input_type = "real"
 
@@ -338,8 +359,6 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         train_data, test_data = X[:split], X[split:]
         train_classes, test_classes = Y[:split], Y[split:]
 
-        dataset.datagroup = "hhar"
-
         dataset.datagroup = "reuters10k"
 
         dataset.test_data = test_data
@@ -351,7 +370,9 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.n_classes = 4
 
         dataset.input_dim = 2000
-        dataset.input_shape = (None, 2000)
+        dataset.input_shape = (-1, 2000)
+
+        dataset.regularization_weight = 20.0
 
         dataset.input_type = "real"
 
@@ -359,6 +380,13 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
         dataset.regeneration_plot = None
 
         return dataset
+
+    def svhn(dir="data/svhn"):
+        from includes import svhn
+
+        svhn.DATA_PATH = dir + "/"
+
+        raise NotImplementedError
 
     if datagroup == "spiral":
         dataset = spiral(**args)
@@ -375,14 +403,24 @@ def load_data(datagroup, output_dim=1, classification=True, **args):
     else:
         raise NotImplementedError
 
-    if classification:
-        dataset.train_labels, dataset.test_labels = generate_classification_variables(
-            dataset
-        )
-    else:
-        dataset.train_labels, dataset.test_labels = generate_regression_variable(
-            dataset, output_dim
-        )
+    if labels:
+        if classification:
+            dataset.train_labels, dataset.test_labels = generate_classification_variables(
+                dataset
+            )
+        else:
+            dataset.train_labels, dataset.test_labels = generate_regression_variable(
+                dataset, output_dim
+            )
+
+        if ss:
+            num_labels //= dataset.n_classes
+            for k in range(dataset.n_classes):
+                indices = np.arange(len(dataset.train_classes))[
+                    dataset.train_classes == k
+                ][num_labels:]
+
+                dataset.train_labels[indices, :] = 0
 
     return dataset
 
@@ -449,6 +487,8 @@ class Dataset:
         self.shuffle = shuffle
 
         self.data_dim = self.data.shape[1]
+
+        self.len = len(self.data)
 
         self.epoch_len = int(math.ceil(len(self.data) / batch_size))
 
